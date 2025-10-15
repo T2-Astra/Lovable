@@ -196,15 +196,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             content: parsedResponse.explanation || accumulatedContent,
           });
 
-          // Save generated files
+          // Save generated files (update if exists, create if new)
           if (parsedResponse.files && Array.isArray(parsedResponse.files)) {
             for (const file of parsedResponse.files) {
-              await storage.createCodeFile({
-                projectId: currentProjectId,
-                filename: file.filename,
-                content: file.content,
-                language: file.language || 'html',
-              });
+              const existingFile = await storage.getCodeFileByProjectAndFilename(
+                currentProjectId,
+                file.filename
+              );
+              
+              if (existingFile) {
+                // Update existing file
+                await storage.updateCodeFile(existingFile.id, file.content);
+              } else {
+                // Create new file
+                await storage.createCodeFile({
+                  projectId: currentProjectId,
+                  filename: file.filename,
+                  content: file.content,
+                  language: file.language || 'html',
+                });
+              }
             }
           }
 
@@ -217,12 +228,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             content: 'Generated code based on your request.',
           });
 
-          await storage.createCodeFile({
-            projectId: currentProjectId,
-            filename: 'index.html',
-            content: `<!DOCTYPE html>\n<html>\n<head>\n  <title>Generated App</title>\n  <style>\n    body { font-family: system-ui, sans-serif; padding: 20px; }\n  </style>\n</head>\n<body>\n  <h1>Your App</h1>\n  <p>${accumulatedContent}</p>\n</body>\n</html>`,
-            language: 'html',
-          });
+          // Check if index.html already exists and update it
+          const existingFile = await storage.getCodeFileByProjectAndFilename(
+            currentProjectId,
+            'index.html'
+          );
+          
+          const htmlContent = `<!DOCTYPE html>\n<html>\n<head>\n  <title>Generated App</title>\n  <style>\n    body { font-family: system-ui, sans-serif; padding: 20px; }\n  </style>\n</head>\n<body>\n  <h1>Your App</h1>\n  <p>${accumulatedContent}</p>\n</body>\n</html>`;
+          
+          if (existingFile) {
+            await storage.updateCodeFile(existingFile.id, htmlContent);
+          } else {
+            await storage.createCodeFile({
+              projectId: currentProjectId,
+              filename: 'index.html',
+              content: htmlContent,
+              language: 'html',
+            });
+          }
 
           res.write(`data: ${JSON.stringify({ type: 'complete', projectId: currentProjectId })}\n\n`);
         }

@@ -22,6 +22,7 @@ export interface IStorage {
   // Code Files
   createCodeFile(codeFile: InsertCodeFile): Promise<CodeFile>;
   getCodeFilesByProject(projectId: string): Promise<CodeFile[]>;
+  getCodeFileByProjectAndFilename(projectId: string, filename: string): Promise<CodeFile | undefined>;
   updateCodeFile(id: string, content: string): Promise<CodeFile | undefined>;
   deleteCodeFilesByProject(projectId: string): Promise<void>;
 }
@@ -107,6 +108,11 @@ export class MemStorage implements IStorage {
     return Array.from(this.codeFiles.values())
       .filter(f => f.projectId === projectId)
       .sort((a, b) => a.filename.localeCompare(b.filename));
+  }
+
+  async getCodeFileByProjectAndFilename(projectId: string, filename: string): Promise<CodeFile | undefined> {
+    return Array.from(this.codeFiles.values())
+      .find(f => f.projectId === projectId && f.filename === filename);
   }
 
   async updateCodeFile(id: string, content: string): Promise<CodeFile | undefined> {

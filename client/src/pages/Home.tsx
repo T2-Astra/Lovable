@@ -102,16 +102,13 @@ export default function Home() {
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6));
-                console.log('[SSE] Received event:', data.type, data);
                 
                 if (data.type === 'project') {
                   projectId = data.projectId;
                   setCurrentProjectId(projectId);
-                  console.log('[SSE] Project ID set:', projectId);
                 } else if (data.type === 'chunk' && data.content) {
                   // Stream content in real-time
                   accumulatedContent += data.content;
-                  console.log('[SSE] Accumulated content length:', accumulatedContent.length);
                   
                   // Update the assistant message with streaming content
                   setLocalConversations(prev => 
@@ -124,7 +121,6 @@ export default function Home() {
                 } else if (data.type === 'complete') {
                   // Clear local conversations and refetch from server
                   setLocalConversations([]);
-                  console.log('[SSE] Generation complete, refetching data');
                   
                   // Invalidate queries to refresh data
                   queryClient.invalidateQueries({ 
@@ -140,11 +136,10 @@ export default function Home() {
                   });
                   setPrompt("");
                 } else if (data.error) {
-                  console.error('[SSE] Error received:', data.error);
                   throw new Error(data.error);
                 }
               } catch (e) {
-                console.warn('[SSE] Failed to parse event line:', line, e);
+                // Ignore JSON parse errors
               }
             }
           }

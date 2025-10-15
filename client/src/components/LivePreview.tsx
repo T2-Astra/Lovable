@@ -15,9 +15,14 @@ export default function LivePreview({ codeFiles }: LivePreviewProps) {
     if (codeFiles.length === 0) return;
 
     try {
-      const htmlFile = codeFiles.find(f => f.filename.endsWith('.html'));
-      const cssFile = codeFiles.find(f => f.filename.endsWith('.css'));
-      const jsFile = codeFiles.find(f => f.filename.endsWith('.js') || f.filename.endsWith('.jsx'));
+      // Sort files by updatedAt descending to get the latest version
+      const sortedFiles = [...codeFiles].sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+      
+      const htmlFile = sortedFiles.find(f => f.filename.endsWith('.html'));
+      const cssFile = sortedFiles.find(f => f.filename.endsWith('.css'));
+      const jsFile = sortedFiles.find(f => f.filename.endsWith('.js') || f.filename.endsWith('.jsx'));
 
       let previewContent = '';
 
