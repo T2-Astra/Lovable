@@ -1,16 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Sparkles, Code2, Zap, Download, Copy, FileCode } from "lucide-react";
+import { Sparkles, Code2, Zap, Download, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import ConversationHistory from "@/components/ConversationHistory";
+import LivePreview from "@/components/LivePreview";
+import type { Conversation, CodeFile } from "@shared/schema";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [localConversations, setLocalConversations] = useState<Conversation[]>([]);
+
+  const { data: conversations = [] } = useQuery<Conversation[]>({
+    queryKey: currentProjectId ? ['/api/conversations', currentProjectId] : [],
+    enabled: !!currentProjectId,
+  });
+
+  const { data: codeFiles = [] } = useQuery<CodeFile[]>({
+    queryKey: currentProjectId ? ['/api/code-files', currentProjectId] : [],
+    enabled: !!currentProjectId,
+  });
+
+  // Merge server conversations with local/optimistic updates
+  const displayConversations = currentProjectId 
+    ? [...conversations, ...localConversations]
+    : localConversations;
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -23,6 +46,28 @@ export default function Home() {
     }
 
     setIsGenerating(true);
+    setShowBuilder(true);
+    
+    // Add user message optimistically
+    const userMessage: Conversation = {
+      id: `temp-user-${Date.now()}`,
+      projectId: currentProjectId || 'temp',
+      role: 'user',
+      content: prompt,
+      timestamp: new Date(),
+    };
+    setLocalConversations(prev => [...prev, userMessage]);
+    
+    // Add placeholder for assistant message
+    const assistantMessageId = `temp-assistant-${Date.now()}`;
+    const assistantMessage: Conversation = {
+      id: assistantMessageId,
+      projectId: currentProjectId || 'temp',
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+    };
+    setLocalConversations(prev => [...prev, assistantMessage]);
     
     try {
       const response = await fetch('/api/generate', {
@@ -30,7 +75,10 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ 
+          prompt,
+          projectId: currentProjectId 
+        }),
       });
 
       if (!response.ok) {
@@ -39,7 +87,8 @@ export default function Home() {
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let projectId: string | null = null;
+      let projectId: string | null = currentProjectId;
+      let accumulatedContent = '';
 
       if (reader) {
         while (true) {
@@ -56,14 +105,36 @@ export default function Home() {
                 
                 if (data.type === 'project') {
                   projectId = data.projectId;
-                } else if (data.type === 'complete' && data.projectId) {
-                  projectId = data.projectId;
-                  toast({
-                    title: "Success!",
-                    description: "Your app has been generated",
+                  setCurrentProjectId(projectId);
+                } else if (data.type === 'chunk' && data.content) {
+                  // Stream content in real-time
+                  accumulatedContent += data.content;
+                  
+                  // Update the assistant message with streaming content
+                  setLocalConversations(prev => 
+                    prev.map(msg => 
+                      msg.id === assistantMessageId 
+                        ? { ...msg, content: accumulatedContent }
+                        : msg
+                    )
+                  );
+                } else if (data.type === 'complete') {
+                  // Clear local conversations and refetch from server
+                  setLocalConversations([]);
+                  
+                  // Invalidate queries to refresh data
+                  queryClient.invalidateQueries({ 
+                    queryKey: ['/api/conversations', data.projectId || projectId] 
                   });
-                  setLocation(`/builder?project=${projectId}`);
-                  return;
+                  queryClient.invalidateQueries({ 
+                    queryKey: ['/api/code-files', data.projectId || projectId] 
+                  });
+                  
+                  toast({
+                    title: "Generated successfully!",
+                    description: "Your code is ready",
+                  });
+                  setPrompt("");
                 } else if (data.error) {
                   throw new Error(data.error);
                 }
@@ -74,21 +145,134 @@ export default function Home() {
           }
         }
       }
-
-      if (projectId) {
-        setLocation(`/builder?project=${projectId}`);
-      }
     } catch (error) {
       toast({
         title: "Generation failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
+      setShowBuilder(false);
+      setLocalConversations([]);
     } finally {
       setIsGenerating(false);
     }
   };
 
+  // Show builder interface if we have a project
+  if (showBuilder || currentProjectId) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        {/* Top Navigation */}
+        <nav className="border-b border-border bg-card/50 backdrop-blur-sm">
+          <div className="flex h-14 items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                <Sparkles className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="font-semibold">Lovable</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setShowBuilder(false);
+                  setCurrentProjectId(null);
+                  setPrompt("");
+                }}
+                data-testid="button-back-home"
+              >
+                Back to Home
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setLocation(`/builder?project=${currentProjectId}`)}
+                data-testid="button-open-builder"
+              >
+                <Code2 className="h-4 w-4 mr-2" />
+                Full Editor
+              </Button>
+            </div>
+          </div>
+        </nav>
+
+        {/* Main Builder Interface */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Panel - Conversation History */}
+          <div className="w-80 border-r border-border bg-card/30 backdrop-blur-sm flex flex-col">
+            <div className="p-4 border-b border-border">
+              <h2 className="font-semibold text-sm text-muted-foreground">Conversation</h2>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ConversationHistory conversations={displayConversations} />
+            </div>
+            {isGenerating && (
+              <div className="p-4 border-t border-border bg-muted/50" data-testid="status-generating">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  <span>Thinking...</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Panel - Live Preview */}
+          <div className="flex-1 flex flex-col">
+            <div className="border-b border-border bg-card/30 backdrop-blur-sm p-3">
+              <h2 className="font-semibold text-sm text-muted-foreground">Preview</h2>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <LivePreview codeFiles={codeFiles} />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Prompt Input */}
+        <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Continue the conversation or ask for modifications..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleGenerate();
+                  }
+                }}
+                className="min-h-[60px] resize-none bg-background/50 border-border/50 focus-visible:ring-primary"
+                disabled={isGenerating}
+                data-testid="input-continue-prompt"
+              />
+              <Button 
+                onClick={handleGenerate}
+                disabled={isGenerating || !prompt.trim()}
+                className="px-6"
+                data-testid="button-send"
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Send
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Landing Page
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section with Gradient */}
@@ -146,22 +330,17 @@ export default function Home() {
                   placeholder="Ask Lovable to create a landing page for my..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  }}
                   className="min-h-24 resize-none text-base bg-background/50 border-border/50 focus-visible:ring-primary"
                   data-testid="input-prompt"
                 />
                 
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" data-testid="button-attach">
-                      <FileCode className="h-4 w-4 mr-2" />
-                      Attach
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid="button-public">
-                      <Code2 className="h-4 w-4 mr-2" />
-                      Public
-                    </Button>
-                  </div>
-                  
+                <div className="flex items-center justify-end">
                   <Button 
                     onClick={handleGenerate}
                     disabled={isGenerating || !prompt.trim()}
