@@ -1,4 +1,4 @@
-# 🚀 Astra - Open Source AI Web Builde
+# 🚀 Astra - Open Source AI Web Builder
 
 <div align="center">
 
