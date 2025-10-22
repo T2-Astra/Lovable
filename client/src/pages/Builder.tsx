@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { Sparkles, Code2, Play, Download, Copy, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sparkles, Code2, Play, Download, Copy, Settings, ChevronLeft, ChevronRight, FileCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { queryClient } from "@/lib/queryClient";
 import CodeEditor from "../components/CodeEditor";
 import LivePreview from "../components/LivePreview";
 import ConversationHistory from "../components/ConversationHistory";
-import ProjectSidebar from "../components/ProjectSidebar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Project, Conversation, CodeFile } from "@shared/schema";
 
 export default function Builder() {
@@ -79,7 +79,7 @@ export default function Builder() {
         },
         body: JSON.stringify({ 
           prompt,
-          projectId: currentProjectId 
+          projectId: null // Always create new project for simplicity
         }),
       });
 
@@ -174,92 +174,71 @@ export default function Builder() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Top Navigation */}
-      <nav className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="flex h-14 items-center justify-between px-4">
-          <div className="flex items-center gap-4">
+      {/* Top Navigation - Minimal */}
+      <nav className="border-b border-border bg-background">
+        <div className="flex h-12 items-center justify-between px-3">
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              onClick={() => window.location.href = `/?project=${currentProjectId}`}
               data-testid="button-toggle-sidebar"
             >
-              {sidebarOpen ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+              <ChevronLeft className="h-5 w-5" />
             </Button>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Sparkles className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="font-semibold">Lovable Builder</span>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="text-xs"
+            >
+              Files
+            </Button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" data-testid="button-settings">
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDownload} data-testid="button-download">
-              <Download className="h-4 w-4 mr-2" />
-              Download
-            </Button>
-            <Button size="sm" data-testid="button-deploy">
-              <Play className="h-4 w-4 mr-2" />
-              Deploy
-            </Button>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
           </div>
         </div>
       </nav>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* Files Sidebar */}
         {sidebarOpen && (
           <div className="w-64 border-r border-border bg-card/30 backdrop-blur-sm">
-            <ProjectSidebar
-              currentProjectId={currentProjectId}
-              onProjectSelect={setCurrentProjectId}
-              codeFiles={codeFiles}
-              onFileSelect={setSelectedFile}
-              selectedFile={selectedFile}
-            />
+            <div className="h-full flex flex-col p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-muted-foreground">Files</h3>
+              </div>
+              
+              <ScrollArea className="flex-1">
+                <div className="space-y-1">
+                  {codeFiles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No files yet
+                    </p>
+                  ) : (
+                    codeFiles.map((file) => (
+                      <Button
+                        key={file.id}
+                        variant={selectedFile?.id === file.id ? "secondary" : "ghost"}
+                        className="w-full justify-start font-mono text-xs"
+                        onClick={() => setSelectedFile(file)}
+                        data-testid={`file-${file.id}`}
+                      >
+                        <FileCode className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="truncate">{file.filename}</span>
+                      </Button>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
         )}
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Prompt Input */}
-          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4">
-            <Card className="p-4 bg-background/50">
-              <div className="flex gap-2">
-                <Textarea
-                  placeholder="Ask Lovable to create or modify your app..."
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  className="min-h-20 resize-none bg-background/50 border-border/50 focus-visible:ring-primary"
-                  data-testid="input-builder-prompt"
-                />
-                <Button 
-                  onClick={handleGenerate}
-                  disabled={isGenerating || !prompt.trim()}
-                  className="min-w-32"
-                  data-testid="button-builder-generate"
-                >
-                  {isGenerating ? (
-                    <>
-                      <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Generate
-                    </>
-                  )}
-                </Button>
-              </div>
-            </Card>
-          </div>
-
           {/* Editor and Preview Split */}
           <div className="flex-1 flex overflow-hidden">
             {/* Left Panel - Code Editor & Chat */}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Sparkles, Code2, Zap, Download, Send } from "lucide-react";
+import { Sparkles, Code2, Download, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import ConversationHistory from "@/components/ConversationHistory";
 import LivePreview from "@/components/LivePreview";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import Aurora from "@/components/Aurora";
 import type { Conversation, CodeFile } from "@shared/schema";
 
 export default function Home() {
@@ -18,6 +20,16 @@ export default function Home() {
   const { toast } = useToast();
   const [showBuilder, setShowBuilder] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  // Check URL for project parameter to show conversation interface
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get('project');
+    if (projectId) {
+      setCurrentProjectId(projectId);
+      setShowBuilder(true);
+    }
+  }, []);
   const [localConversations, setLocalConversations] = useState<Conversation[]>([]);
 
   const { data: conversations = [] } = useQuery<Conversation[]>({
@@ -110,11 +122,16 @@ export default function Home() {
                   // Stream content in real-time
                   accumulatedContent += data.content;
                   
+                  // Show user-friendly generating message instead of raw JSON
+                  const displayMessage = accumulatedContent.includes('"files"') 
+                    ? '✨ Generating your code...' 
+                    : accumulatedContent;
+                  
                   // Update the assistant message with streaming content
                   setLocalConversations(prev => 
                     prev.map(msg => 
                       msg.id === assistantMessageId 
-                        ? { ...msg, content: accumulatedContent }
+                        ? { ...msg, content: displayMessage }
                         : msg
                     )
                   );
@@ -136,6 +153,12 @@ export default function Home() {
                   });
                   setPrompt("");
                 } else if (data.error) {
+                  console.error('Generation error:', data.error);
+                  toast({
+                    title: "Error",
+                    description: data.error,
+                    variant: "destructive",
+                  });
                   throw new Error(data.error);
                 }
               } catch (e) {
@@ -161,110 +184,82 @@ export default function Home() {
   // Show builder interface if we have a project
   if (showBuilder || currentProjectId) {
     return (
-      <div className="h-screen flex flex-col bg-background">
-        {/* Top Navigation */}
-        <nav className="border-b border-border bg-card/50 backdrop-blur-sm">
-          <div className="flex h-14 items-center justify-between px-4">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Sparkles className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="font-semibold">Lovable</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => {
-                  setShowBuilder(false);
-                  setCurrentProjectId(null);
-                  setPrompt("");
-                }}
-                data-testid="button-back-home"
-              >
-                Back to Home
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setLocation(`/builder?project=${currentProjectId}`)}
-                data-testid="button-open-builder"
-              >
-                <Code2 className="h-4 w-4 mr-2" />
-                Full Editor
-              </Button>
-            </div>
-          </div>
-        </nav>
-
+      <div className="h-screen flex bg-background">
         {/* Main Builder Interface */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - Conversation History */}
           <div className="w-80 border-r border-border bg-card/30 backdrop-blur-sm flex flex-col">
-            <div className="p-4 border-b border-border">
-              <h2 className="font-semibold text-sm text-muted-foreground">Conversation</h2>
-            </div>
             <div className="flex-1 overflow-hidden">
               <ConversationHistory conversations={displayConversations} />
             </div>
-            {isGenerating && (
-              <div className="p-4 border-t border-border bg-muted/50" data-testid="status-generating">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  <span>Thinking...</span>
-                </div>
+            
+            {/* Input inside conversation panel */}
+            <div className="border-t border-border bg-card/50 backdrop-blur-sm p-2">
+              <div className="relative flex items-end gap-2 rounded-md border border-border/50 bg-background/50 p-2 focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2">
+                <Textarea
+                  placeholder="Continue the conversation or ask for modifications..."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  }}
+                  className="flex-1 min-h-[60px] resize-none bg-transparent border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
+                  disabled={isGenerating}
+                  data-testid="input-continue-prompt"
+                />
+                <Button 
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !prompt.trim()}
+                  size="icon"
+                  className="flex-shrink-0"
+                  data-testid="button-send"
+                >
+                  {isGenerating ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Right Panel - Live Preview */}
           <div className="flex-1 flex flex-col">
-            <div className="border-b border-border bg-card/30 backdrop-blur-sm p-3">
+            <div className="border-b border-border bg-card/30 backdrop-blur-sm p-2 flex justify-between items-center">
               <h2 className="font-semibold text-sm text-muted-foreground">Preview</h2>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowBuilder(false);
+                    setCurrentProjectId(null);
+                    setPrompt("");
+                  }}
+                  className="text-xs"
+                  data-testid="button-back-home"
+                >
+                  Chat
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLocation(`/builder?project=${currentProjectId}`)}
+                  className="text-xs"
+                  data-testid="button-open-builder"
+                >
+                  <Code2 className="h-3 w-3 mr-1" />
+                  Edit
+                </Button>
+                <ThemeToggle />
+              </div>
             </div>
             <div className="flex-1 overflow-hidden">
               <LivePreview codeFiles={codeFiles} />
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Prompt Input */}
-        <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex gap-2">
-              <Textarea
-                placeholder="Continue the conversation or ask for modifications..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleGenerate();
-                  }
-                }}
-                className="min-h-[60px] resize-none bg-background/50 border-border/50 focus-visible:ring-primary"
-                disabled={isGenerating}
-                data-testid="input-continue-prompt"
-              />
-              <Button 
-                onClick={handleGenerate}
-                disabled={isGenerating || !prompt.trim()}
-                className="px-6"
-                data-testid="button-send"
-              >
-                {isGenerating ? (
-                  <>
-                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Send
-                  </>
-                )}
-              </Button>
             </div>
           </div>
         </div>
@@ -277,31 +272,52 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       {/* Hero Section with Gradient */}
       <div className="relative min-h-screen overflow-hidden">
-        {/* Animated Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-pink-900/20" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/10 via-purple-600/10 to-pink-600/10 animate-pulse" style={{ animationDuration: "4s" }} />
+        {/* Aurora Background */}
+        <div className="absolute inset-0">
+          <Aurora
+            colorStops={["#3A29FF", "#FF94B4", "#FF3232"]}
+            blend={0.5}
+            amplitude={1.0}
+            speed={0.5}
+          />
+        </div>
+        
+        {/* Grain Texture Overlay */}
+        <div 
+          className="absolute inset-0" 
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E")`,
+            backgroundSize: '100px 100px',
+            backgroundRepeat: 'repeat',
+            backgroundBlendMode: 'overlay',
+            backgroundPosition: 'left top',
+            mixBlendMode: 'overlay',
+            opacity: 0.3
+          }}
+        />
         
         {/* Top Navigation */}
         <nav className="relative z-10 border-b border-border/40 bg-background/80 backdrop-blur-lg">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex h-16 items-center justify-between">
+            <div className="flex h-12 items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                  <Sparkles className="h-5 w-5 text-primary-foreground" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary">
+                  <Sparkles className="h-4 w-4 text-primary-foreground" />
                 </div>
-                <span className="text-xl font-bold">Lovable</span>
+                <span className="text-lg font-bold">Astra</span>
               </div>
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" data-testid="button-community">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" data-testid="button-community">
                   Community
                 </Button>
-                <Button variant="ghost" data-testid="button-pricing">
+                <Button variant="ghost" size="sm" data-testid="button-pricing">
                   Pricing
                 </Button>
-                <Button variant="ghost" data-testid="button-docs">
+                <Button variant="ghost" size="sm" data-testid="button-docs">
                   Learn
                 </Button>
-                <Button variant="default" data-testid="button-get-started">
+                <ThemeToggle />
+                <Button variant="default" size="sm" data-testid="button-get-started">
                   Get Started
                 </Button>
               </div>
@@ -309,25 +325,28 @@ export default function Home() {
           </div>
         </nav>
 
-        {/* Hero Content */}
-        <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-32">
-          <div className="max-w-4xl mx-auto text-center space-y-8">
-            <h1 className="text-6xl md:text-7xl font-bold leading-tight">
-              Build something{" "}
-              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-                Lovable
-              </span>
+        <section className="mb-[20px] flex w-full flex-col items-center justify-center py-[20vh] md:mb-0 2xl:py-64">
+          <div className="relative mb-4 flex flex-col items-center px-4 text-center md:mb-6">
+            <div className="flex w-full flex-col items-center justify-center gap-2"></div>
+            <h1 className="mb-2 flex items-center gap-1 text-3xl font-medium leading-none text-foreground sm:text-3xl md:mb-2.5 md:gap-0 md:text-5xl">
+              <span className="pt-0.5 tracking-tight md:pt-0">Build something With-</span>
+              <span className="bg-gradient-to-r from-purple-600 via-pink-500 to-blue-500 bg-clip-text text-transparent font-bold tracking-tight">Astra</span>
             </h1>
-            
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Create apps and websites by chatting with AI
-            </p>
-
-            {/* Prompt Input Card */}
-            <Card className="max-w-3xl mx-auto p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-2xl">
-              <div className="space-y-4">
-                <Textarea
-                  placeholder="Ask Lovable to create a landing page for my..."
+            <p className="mb-6 max-w-[25ch] text-center text-lg leading-t ight text-foreground/65 md:max-w-full md:text-xl">Create apps and websites by chatting with AI</p>
+          </div>
+          <div className="w-full max-w-xl">
+            <div className="relative w-full">
+              <div className="flex w-full flex-col items-center">
+                <div className="relative size-full">
+                  <form id="chat-input" className="group flex flex-col gap-1.5 p-2.5 w-full rounded-3.5xl border border-muted-border bg-muted text-base shadow-xl transition-all duration-150 ease-in-out focus-within:border-foreground/20 hover:border-foreground/10 focus-within:hover:border-foreground/20">
+                    <div className="relative flex flex-1 items-center">
+                      <textarea
+                        className="flex w-full rounded-md px-2 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 max-h-[max(35svh,5rem)] bg-transparent focus:bg-transparent flex-1"
+                        id="chatinput"
+                        autoFocus
+                        style={{minHeight: '65px', height: '65px'}}
+                        placeholder="Ask Astra to create a web app th"
+                        maxLength={50000}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={(e) => {
@@ -336,97 +355,56 @@ export default function Home() {
                       handleGenerate();
                     }
                   }}
-                  className="min-h-24 resize-none text-base bg-background/50 border-border/50 focus-visible:ring-primary"
-                  data-testid="input-prompt"
-                />
-                
-                <div className="flex items-center justify-end">
-                  <Button 
+                      />
+                    </div>
+                    <div className="flex gap-1 flex-wrap items-center">
+                      <button className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none border border-input bg-muted hover:bg-accent hover:border-accent gap-1.5 h-10 w-10 rounded-full p-0 text-muted-foreground hover:text-foreground md:h-8 md:w-8" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" width="100%" height="100%" className="shrink-0 h-5 w-5 text-muted-foreground">
+                          <path fill="currentColor" d="M11.25 18v-5.25H6a.75.75 0 0 1 0-1.5h5.25V6a.75.75 0 0 1 1.5 0v5.25H18a.75.75 0 0 1 0 1.5h-5.25V18a.75.75 0 0 1-1.5 0"></path>
+                        </svg>
+                      </button>
+                      <div>
+                        <button className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none border border-input bg-muted hover:bg-accent hover:border-accent py-2 h-10 w-10 gap-1.5 rounded-full px-3 text-muted-foreground hover:text-foreground md:h-8 md:w-fit" type="button">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" width="100%" height="100%" className="shrink-0 h-4 w-4">
+                            <path fill="currentColor" d="M5.25 15V8a.75.75 0 0 1 1.5 0v7a5.25 5.25 0 1 0 10.5 0V7a3.25 3.25 0 0 0-6.5 0v8a1.25 1.25 0 1 0 2.5 0V8a.75.75 0 0 1 1.5 0v7a2.75 2.75 0 1 1-5.5 0V7a4.75 4.75 0 1 1 9.5 0v8a6.75 6.75 0 0 1-13.5 0"></path>
+                          </svg>
+                          <span className="hidden md:flex">Attach</span>
+                        </button>
+                      </div>
+                      <input id="file-upload" className="hidden" multiple type="file" style={{border:0,clip:'rect(0, 0, 0, 0)',clipPath:'inset(50%)',height:'1px',margin:'0 -1px -1px 0',overflow:'hidden',padding:0,position:'absolute',width:'1px',whiteSpace:'nowrap'}} tabIndex={-1} />
+                      <div className="ml-auto flex items-center gap-1">
+                        <div className="relative flex items-center gap-1 md:gap-2">
+                          <div className=""></div>
+                          <button className="gap-2 whitespace-nowrap text-sm font-medium ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none [&_svg]:pointer-events-none border border-input bg-muted hover:bg-accent hover:border-accent relative z-10 flex rounded-full p-0 text-muted-foreground transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 items-center justify-center h-10 w-10 md:h-8 md:w-8" type="button">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" width="100%" height="100%" className="shrink-0 relative z-10 h-5 w-5">
+                              <path fill="currentColor" d="M11.25 20V4a.75.75 0 0 1 1.5 0v16a.75.75 0 0 1-1.5 0m8-2V6a.75.75 0 0 1 1.5 0v12a.75.75 0 0 1-1.5 0m-12-1V7a.75.75 0 0 1 1.5 0v10a.75.75 0 0 1-1.5 0m8-2V9a.75.75 0 0 1 1.5 0v6a.75.75 0 0 1-1.5 0m-12-1v-4a.75.75 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0"></path>
+                            </svg>
+                          </button>
+                          <button 
+                            id="chatinput-send-message-button" 
+                            type="submit" 
+                            className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground transition-opacity duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 md:h-8 md:w-8" 
+                            disabled={isGenerating || !prompt.trim()}
                     onClick={handleGenerate}
-                    disabled={isGenerating || !prompt.trim()}
-                    className="min-w-32"
-                    data-testid="button-generate"
                   >
                     {isGenerating ? (
-                      <>
-                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-4 w-4 mr-2" />
-                        Generate
-                      </>
-                    )}
-                  </Button>
+                              <div className="h-6 w-6 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" width="100%" height="100%" className="shrink-0 h-6 w-6 text-background">
+                                <path fill="currentColor" d="M11 19V7.415l-3.293 3.293a1 1 0 1 1-1.414-1.414l5-5 .074-.067a1 1 0 0 1 1.34.067l5 5a1 1 0 1 1-1.414 1.414L13 7.415V19a1 1 0 1 1-2 0"></path>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
                 </div>
               </div>
-            </Card>
-
-            {/* Example Prompts */}
-            <div className="flex flex-wrap gap-2 justify-center">
-              <Button 
-                variant="secondary" 
-                size="sm"
-                onClick={() => setPrompt("Create a modern portfolio website with smooth animations")}
-                data-testid="button-example-1"
-              >
-                Portfolio website
-              </Button>
-              <Button 
-                variant="secondary" 
-                size="sm"
-                onClick={() => setPrompt("Build a task management app with drag and drop")}
-                data-testid="button-example-2"
-              >
-                Task manager
-              </Button>
-              <Button 
-                variant="secondary" 
-                size="sm"
-                onClick={() => setPrompt("Create a landing page for a SaaS product")}
-                data-testid="button-example-3"
-              >
-                SaaS landing page
-              </Button>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Features Section */}
-        <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <Card className="p-6 bg-card/50 backdrop-blur-sm border-border/50 hover-elevate">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 mb-4">
-                <Sparkles className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">AI-Powered Generation</h3>
-              <p className="text-muted-foreground">
-                Describe your app in plain English and watch AI generate production-ready code instantly
-              </p>
-            </Card>
-
-            <Card className="p-6 bg-card/50 backdrop-blur-sm border-border/50 hover-elevate">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 mb-4">
-                <Code2 className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Live Preview</h3>
-              <p className="text-muted-foreground">
-                See your app come to life in real-time with instant preview and interactive editing
-              </p>
-            </Card>
-
-            <Card className="p-6 bg-card/50 backdrop-blur-sm border-border/50 hover-elevate">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 mb-4">
-                <Download className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Export & Deploy</h3>
-              <p className="text-muted-foreground">
-                Download your code or deploy with one click. Full ownership, no vendor lock-in
-              </p>
-            </Card>
-          </div>
-        </div>
       </div>
     </div>
   );

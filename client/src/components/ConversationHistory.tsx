@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,6 +10,12 @@ interface ConversationHistoryProps {
 }
 
 export default function ConversationHistory({ conversations }: ConversationHistoryProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversations]);
   if (conversations.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground p-8" data-testid="chat-empty">
@@ -17,7 +24,7 @@ export default function ConversationHistory({ conversations }: ConversationHisto
             <Sparkles className="h-8 w-8 opacity-50" />
           </div>
           <p className="font-medium">No conversation yet</p>
-          <p className="text-sm">Start by asking Lovable to build something</p>
+          <p className="text-sm">Start by asking Astra to build something</p>
         </div>
       </div>
     );
@@ -29,42 +36,32 @@ export default function ConversationHistory({ conversations }: ConversationHisto
         {conversations.map((conversation) => (
           <div
             key={conversation.id}
-            className={`flex gap-3 ${conversation.role === 'user' ? 'justify-end' : ''}`}
+            className={`${conversation.role === 'user' ? 'flex justify-end' : 'flex flex-col pr-2 pb-4'}`}
             data-testid={`conversation-${conversation.id}`}
           >
-            {conversation.role === 'assistant' && (
-              <Avatar className="h-8 w-8 flex-shrink-0">
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  <Sparkles className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-            )}
-
-            <Card className={`p-3 max-w-[80%] ${
-              conversation.role === 'user' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'bg-card'
-            }`}>
-              <div className="space-y-2">
-                <p className="text-sm font-medium">
-                  {conversation.role === 'user' ? 'You' : 'Lovable'}
-                </p>
-                <p className="text-sm whitespace-pre-wrap">{conversation.content}</p>
-                <p className="text-xs opacity-70">
-                  {new Date(conversation.timestamp).toLocaleTimeString()}
-                </p>
-              </div>
-            </Card>
-
-            {conversation.role === 'user' && (
-              <Avatar className="h-8 w-8 flex-shrink-0">
-                <AvatarFallback className="bg-secondary text-secondary-foreground">
-                  <User className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
+            {conversation.role === 'user' ? (
+              // User message - with card
+              <Card className="max-w-[80%] bg-secondary text-foreground px-3 py-3">
+                <div className="text-lg md:text-base leading-[22px] whitespace-pre-wrap">
+                  {conversation.content}
+                </div>
+              </Card>
+            ) : (
+              // AI message - no card, just label and text
+              <>
+                <div className="mb-3 flex items-center gap-2 pl-2 text-sm text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span className="font-medium">Astra</span>
+                </div>
+                <div className="pl-2 text-base leading-[22px] whitespace-pre-wrap">
+                  {conversation.content}
+                </div>
+              </>
             )}
           </div>
         ))}
+        {/* Invisible element at the end for auto-scroll */}
+        <div ref={messagesEndRef} />
       </div>
     </ScrollArea>
   );

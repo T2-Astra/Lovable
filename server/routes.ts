@@ -89,9 +89,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      const apiKey = process.env.OPENROUTER_API_KEY;
+      const apiKey = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY;
+      const apiEndpoint = process.env.GROQ_API_KEY 
+        ? 'https://api.groq.com/openai/v1/chat/completions'
+        : 'https://openrouter.ai/api/v1/chat/completions';
+      console.log('API Key check:', apiKey ? 'Present' : 'Missing');
+      console.log('Using endpoint:', apiEndpoint);
       if (!apiKey) {
-        res.write(`data: ${JSON.stringify({ error: "OpenRouter API key not configured" })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: "API key not configured. Add GROQ_API_KEY or OPENROUTER_API_KEY" })}\n\n`);
         res.end();
         return;
       }
@@ -114,25 +119,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: prompt,
       });
 
-      // Call OpenRouter API
-      const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      // Get existing files for context (if any)
+      const existingFiles = await storage.getCodeFilesByProject(currentProjectId);
+      let contextMessage = '';
+      
+      if (existingFiles.length > 0) {
+        contextMessage = '\n\nEXISTING CODE CONTEXT:\n';
+        for (const file of existingFiles) {
+          contextMessage += `\n--- ${file.filename} ---\n${file.content}\n`;
+        }
+        contextMessage += '\n\nINSTRUCTION: Analyze the existing code above and make ONLY the specific changes requested. Do NOT rewrite the entire code. Keep all existing functionality and structure intact.';
+      }
+
+      // Call AI API (Groq or OpenRouter)
+      const model = process.env.GROQ_API_KEY 
+        ? 'llama-3.1-8b-instant' // Groq's model
+        : 'openai/gpt-4-turbo'; // OpenRouter - Best for coding, good cost efficiency
+        // Alternative options:
+        // : 'openai/gpt-3.5-turbo';   // Cheapest but less capable for complex code
+        // : 'openai/gpt-4';           // Good balance
+        // : 'openai/gpt-4o-mini';     // Original (more expensive)
+      
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      };
+      
+      // Add OpenRouter-specific headers only if using OpenRouter
+      if (!process.env.GROQ_API_KEY) {
+        headers['HTTP-Referer'] = 'https://astra-clone.replit.app';
+        headers['X-Title'] = 'Astra Clone';
+      }
+
+      const openRouterResponse = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://lovable-clone.replit.app',
-          'X-Title': 'Lovable Clone',
-        },
+        headers,
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet',
+          model,
+          max_tokens: 1400, // Optimized for coding tasks with GPT-4-turbo
           messages: [
             {
               role: 'system',
-              content: 'You are an expert web developer. Generate clean, modern, production-ready HTML, CSS, and JavaScript code based on user requests. Always provide complete, working code that can be directly used. Format your response as JSON with this structure: { "explanation": "brief explanation", "files": [{ "filename": "index.html", "content": "...", "language": "html" }] }'
+              content: `You are an expert web developer. ALWAYS create separate files for HTML, CSS, and JavaScript.
+
+CRITICAL: Return ONLY valid JSON in this EXACT format (no markdown, no extra text):
+{"explanation":"brief description","files":[{"filename":"index.html","content":"HTML code here","language":"html"},{"filename":"styles.css","content":"CSS code here","language":"css"},{"filename":"script.js","content":"JS code here","language":"javascript"}]}
+
+MODIFICATION RULES (VERY IMPORTANT):
+1. If EXISTING CODE CONTEXT is provided, you MUST analyze it carefully
+2. Make ONLY the specific changes requested - DO NOT rewrite everything
+3. Keep all existing functionality, structure, and working code intact
+4. Only modify the parts that need to change based on the request
+5. Preserve existing class names, IDs, and structure unless specifically asked to change them
+6. Add new features without breaking existing ones
+
+CREATION RULES (for new projects):
+1. ALWAYS create 3 files: index.html, styles.css, script.js
+2. Link CSS with: <link rel="stylesheet" href="styles.css">
+3. Link JS with: <script src="script.js"></script>
+4. Use modern, clean, semantic HTML5
+5. Include responsive CSS
+
+Return ONLY the JSON object, nothing else.`
             },
             {
               role: 'user',
-              content: prompt
+              content: prompt + contextMessage
             }
           ],
           stream: true,
@@ -141,6 +193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!openRouterResponse.ok) {
         const errorText = await openRouterResponse.text();
+        console.error('OpenRouter API error:', errorText);
         res.write(`data: ${JSON.stringify({ error: `OpenRouter API error: ${errorText}` })}\n\n`);
         res.end();
         return;
@@ -184,57 +237,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Parse the accumulated response
       try {
-        // Try to extract JSON from the response
-        const jsonMatch = accumulatedContent.match(/\{[\s\S]*"files"[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsedResponse = JSON.parse(jsonMatch[0]);
+        let saved = false;
+        
+        // First, try to parse as JSON
+        try {
+          // Remove any markdown and clean the response
+          let cleanedContent = accumulatedContent
+            .replace(/```json\s*/g, '')
+            .replace(/```\s*/g, '')
+            .trim();
           
-          // Save AI response
-          await storage.createConversation({
-            projectId: currentProjectId,
-            role: 'assistant',
-            content: parsedResponse.explanation || accumulatedContent,
-          });
-
-          // Save generated files (update if exists, create if new)
-          if (parsedResponse.files && Array.isArray(parsedResponse.files)) {
-            for (const file of parsedResponse.files) {
-              const existingFile = await storage.getCodeFileByProjectAndFilename(
-                currentProjectId,
-                file.filename
-              );
+          // Try to find a complete JSON object
+          let jsonStr = '';
+          let braceCount = 0;
+          let inString = false;
+          let escaped = false;
+          let startIndex = cleanedContent.indexOf('{');
+          
+          if (startIndex !== -1) {
+            for (let i = startIndex; i < cleanedContent.length; i++) {
+              const char = cleanedContent[i];
+              jsonStr += char;
               
-              if (existingFile) {
-                // Update existing file
-                await storage.updateCodeFile(existingFile.id, file.content);
-              } else {
-                // Create new file
-                await storage.createCodeFile({
-                  projectId: currentProjectId,
-                  filename: file.filename,
-                  content: file.content,
-                  language: file.language || 'html',
-                });
+              if (escaped) {
+                escaped = false;
+                continue;
+              }
+              
+              if (char === '\\') {
+                escaped = true;
+                continue;
+              }
+              
+              if (char === '"') {
+                inString = !inString;
+                continue;
+              }
+              
+              if (!inString) {
+                if (char === '{') braceCount++;
+                if (char === '}') braceCount--;
+                
+                if (braceCount === 0) break;
               }
             }
           }
+          
+          if (jsonStr && braceCount === 0) {
+            // Handle escaped unicode characters only (not newlines/tabs)
+            jsonStr = jsonStr
+              .replace(/\\u0022/g, '"')
+              .replace(/\\u0027/g, "'");
+            
+            console.log('Attempting to parse JSON:', jsonStr.substring(0, 200) + '...');
+            const parsedResponse = JSON.parse(jsonStr);
+            
+            // Decode escaped characters in file content before saving
+            if (parsedResponse.files && Array.isArray(parsedResponse.files)) {
+              parsedResponse.files = parsedResponse.files.map((file: any) => ({
+                ...file,
+                content: file.content
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\t/g, '\t')
+                  .replace(/\\r/g, '\r')
+              }));
+            }
+            
+            // Save AI response
+            await storage.createConversation({
+              projectId: currentProjectId,
+              role: 'assistant',
+              content: parsedResponse.explanation || 'Generated code successfully',
+            });
 
-          res.write(`data: ${JSON.stringify({ type: 'complete', projectId: currentProjectId })}\n\n`);
-        } else {
-          // If no structured response, create a simple HTML file
+            // Save generated files (always update existing files)
+            if (parsedResponse.files && Array.isArray(parsedResponse.files)) {
+              for (const file of parsedResponse.files) {
+                const existingFile = await storage.getCodeFileByProjectAndFilename(
+                  currentProjectId,
+                  file.filename
+                );
+                
+                if (existingFile) {
+                  // Update existing file
+                  console.log(`Updating existing file: ${file.filename}`);
+                  await storage.updateCodeFile(existingFile.id, file.content);
+                } else {
+                  // Create new file only if it doesn't exist
+                  console.log(`Creating new file: ${file.filename}`);
+                  await storage.createCodeFile({
+                    projectId: currentProjectId,
+                    filename: file.filename,
+                    content: file.content,
+                    language: file.language || 'html',
+                  });
+                }
+              }
+              saved = true;
+            }
+          }
+        } catch (jsonError) {
+          // Not JSON, continue to HTML parsing
+        }
+
+        // If not saved as JSON, try as plain HTML
+        if (!saved) {
+          let htmlContent = accumulatedContent
+            .replace(/```html\s*/g, '')
+            .replace(/```\s*/g, '')
+            .trim();
+          
+          if (!htmlContent.includes('<!DOCTYPE') && !htmlContent.includes('<html')) {
+            htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generated App</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  ${htmlContent}
+</body>
+</html>`;
+          }
+          
           await storage.createConversation({
             projectId: currentProjectId,
             role: 'assistant',
-            content: 'Generated code based on your request.',
+            content: 'Generated code successfully',
           });
 
-          // Check if index.html already exists and update it
           const existingFile = await storage.getCodeFileByProjectAndFilename(
             currentProjectId,
             'index.html'
           );
-          
-          const htmlContent = `<!DOCTYPE html>\n<html>\n<head>\n  <title>Generated App</title>\n  <style>\n    body { font-family: system-ui, sans-serif; padding: 20px; }\n  </style>\n</head>\n<body>\n  <h1>Your App</h1>\n  <p>${accumulatedContent}</p>\n</body>\n</html>`;
           
           if (existingFile) {
             await storage.updateCodeFile(existingFile.id, htmlContent);
@@ -246,9 +385,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               language: 'html',
             });
           }
-
-          res.write(`data: ${JSON.stringify({ type: 'complete', projectId: currentProjectId })}\n\n`);
         }
+
+        res.write(`data: ${JSON.stringify({ type: 'complete', projectId: currentProjectId })}\n\n`);
       } catch (parseError) {
         console.error('Failed to parse AI response:', parseError);
         res.write(`data: ${JSON.stringify({ error: "Failed to parse AI response" })}\n\n`);
