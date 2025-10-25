@@ -9,12 +9,13 @@ export default function Home() {
   
   const generateMutation = useMutation({
     mutationFn: async (data: { prompt: string; template?: string }) => {
-      const response = await apiRequest<GenerationResponse>(
+      const response = await apiRequest(
         'POST',
         '/api/generate',
         data
       );
-      return response;
+      const json = await response.json() as GenerationResponse;
+      return json;
     },
     onSuccess: (data) => {
       toast({

@@ -70,13 +70,9 @@ export async function generateProject(prompt: string, template?: string): Promis
                 },
                 required: ["path", "content", "language"]
               }
-            },
-            dependencies: {
-              type: "object",
-              additionalProperties: { type: "string" }
             }
           },
-          required: ["projectName", "description", "files", "dependencies"]
+          required: ["projectName", "description", "files"]
         },
       },
       contents: fullPrompt,
@@ -95,11 +91,23 @@ export async function generateProject(prompt: string, template?: string): Promis
       throw new Error("Invalid response structure from Gemini");
     }
 
+    // Extract dependencies from file content or use empty object
+    const dependencies: Record<string, string> = {};
+    const packageJsonFile = data.files.find((f: ProjectFile) => f.path === 'package.json');
+    if (packageJsonFile) {
+      try {
+        const packageJson = JSON.parse(packageJsonFile.content);
+        Object.assign(dependencies, packageJson.dependencies || {});
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+    
     return {
       projectName: data.projectName,
       description: data.description || "Generated web application",
       files: data.files,
-      dependencies: data.dependencies || {}
+      dependencies
     };
   } catch (error) {
     console.error("Gemini generation error:", error);
