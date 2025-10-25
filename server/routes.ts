@@ -43,9 +43,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
         res.write(sseData);
         
-        // If complete, save the project
+        // If complete, save the project and auto-save to history
         if (event.type === 'complete' && event.data.project) {
           await storage.saveProject(sessionId, event.data.project);
+          
+          // Auto-save to history with generated name
+          try {
+            const autoSaveName = `${event.data.project.description?.substring(0, 50) || 'Generated Project'} - ${new Date().toLocaleString()}`;
+            await storage.saveToHistory(sessionId, autoSaveName, event.data.project, template as string | undefined);
+            console.log(`Auto-saved project: ${autoSaveName}`);
+          } catch (error) {
+            console.error('Auto-save failed:', error);
+          }
         }
       }
       
@@ -137,6 +146,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Project clear error:", error);
       res.status(500).json({ 
         error: "Failed to clear project" 
+      });
+    }
+  });
+  
+  // Save current project to history
+  app.post("/api/projects/save", async (req, res) => {
+    try {
+      const sessionId = req.sessionID || 'default';
+      const { name, templateId } = req.body;
+      
+      if (!name || typeof name !== 'string') {
+        return res.status(400).json({ error: 'Project name is required' });
+      }
+      
+      const currentProject = await storage.getProject(sessionId);
+      if (!currentProject) {
+        return res.status(404).json({ error: 'No current project to save' });
+      }
+      
+      const savedProject = await storage.saveToHistory(sessionId, name, currentProject, templateId);
+      res.json(savedProject);
+    } catch (error) {
+      console.error("Save to history error:", error);
+      res.status(500).json({ 
+        error: "Failed to save project to history" 
+      });
+    }
+  });
+  
+  // Get project history for current session
+  app.get("/api/projects/history", async (req, res) => {
+    try {
+      const sessionId = req.sessionID || 'default';
+      const history = await storage.getProjectHistory(sessionId);
+      res.json(history);
+    } catch (error) {
+      console.error("Get history error:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch project history" 
+      });
+    }
+  });
+  
+  // Get a specific project by ID
+  app.get("/api/projects/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid project ID' });
+      }
+      
+      const sessionId = req.sessionID || 'default';
+      const project = await storage.getProjectById(id, sessionId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      res.json(project);
+    } catch (error) {
+      console.error("Get project by ID error:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch project" 
+      });
+    }
+  });
+  
+  // Delete a saved project
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid project ID' });
+      }
+      
+      const sessionId = req.sessionID || 'default';
+      const deleted = await storage.deleteProject(id, sessionId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete project error:", error);
+      res.status(500).json({ 
+        error: "Failed to delete project" 
       });
     }
   });

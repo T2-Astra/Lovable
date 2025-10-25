@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { FileTree } from "./FileTree";
 import { CodeEditor } from "./CodeEditor";
 import { PreviewPanel } from "./PreviewPanel";
@@ -6,11 +8,16 @@ import { PromptInput } from "./PromptInput";
 import { GenerationProgress } from "./GenerationProgress";
 import { EmptyState } from "./EmptyState";
 import { ThemeToggle } from "./ThemeToggle";
+import { ProjectHistory } from "./ProjectHistory";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Sparkles, FolderTree, FileCode, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Sparkles, FolderTree, FileCode, Eye, ChevronLeft, ChevronRight, Save, History } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { WebContainerManager } from "@/lib/webcontainer";
-import type { ProjectFile, GenerationProgress as ProgressType, GenerationResponse, Template } from "@shared/schema";
+import type { ProjectFile, GenerationProgress as ProgressType, GenerationResponse, Template, Project } from "@shared/schema";
 
 interface WorkspaceProps {
   onGenerate: (prompt: string, template?: string) => Promise<GenerationResponse>;
@@ -42,7 +49,12 @@ export function Workspace({
   const [useWebContainer, setUseWebContainer] = useState(false);
   const [webContainerError, setWebContainerError] = useState<string>();
   const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [currentProjectData, setCurrentProjectData] = useState<GenerationResponse | null>(null);
   
+  const { toast } = useToast();
   const webContainerRef = useRef<WebContainerManager | null>(null);
   const isGenerating = externalIsGenerating || false;
   const hasProject = files.length > 0;
@@ -127,6 +139,7 @@ export function Workspace({
   useEffect(() => {
     if (generatedProject) {
       setFiles(generatedProject.files);
+      setCurrentProjectData(generatedProject);
       setShowPrompt(false);
       if (generatedProject.files.length > 0) {
         setSelectedFile(generatedProject.files[0]);
@@ -215,8 +228,79 @@ export function Workspace({
     }
   };
 
+  const saveMutation = useMutation({
+    mutationFn: async ({ name, templateId }: { name: string; templateId?: string }) => {
+      return await apiRequest('POST', '/api/projects/save', { name, templateId });
+    },
+    onSuccess: () => {
+      setShowSaveDialog(false);
+      setProjectName("");
+      toast({
+        title: "Project saved",
+        description: "Your project has been saved to history.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Save failed",
+        description: error instanceof Error ? error.message : "Failed to save project",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleSaveProject = () => {
+    setShowSaveDialog(true);
+    if (currentProjectData) {
+      const defaultName = currentProjectData.projectName || 
+        (currentProjectData.description?.substring(0, 50) || 'Untitled Project');
+      setProjectName(defaultName);
+    }
+  };
+  
+  const handleConfirmSave = () => {
+    if (!projectName.trim()) {
+      toast({
+        title: "Name required",
+        description: "Please enter a project name",
+        variant: "destructive",
+      });
+      return;
+    }
+    saveMutation.mutate({ 
+      name: projectName.trim(), 
+      templateId: selectedTemplate 
+    });
+  };
+  
+  const handleLoadProject = (project: Project) => {
+    const projectData: GenerationResponse = {
+      files: project.files,
+      dependencies: project.dependencies,
+      projectName: project.name,
+      description: project.prompt,
+    };
+    
+    setFiles(project.files);
+    setCurrentProjectData(projectData);
+    setShowPrompt(false);
+    if (project.files.length > 0) {
+      setSelectedFile(project.files[0]);
+    }
+    
+    const needsContainer = needsWebContainer(projectData);
+    setUseWebContainer(needsContainer);
+    
+    if (needsContainer) {
+      setupWebContainerProject(projectData);
+    } else {
+      setPreviewUrl('/api/preview');
+    }
+    
+    setModifiedFiles(new Set());
+  };
+
   const handleNewProject = async () => {
-    // Cleanup WebContainer if it was used
     if (useWebContainer && webContainerRef.current) {
       try {
         await webContainerRef.current.teardown();
@@ -233,6 +317,7 @@ export function Workspace({
     setUseWebContainer(false);
     setWebContainerError(undefined);
     setModifiedFiles(new Set());
+    setCurrentProjectData(null);
   };
   
   return (
@@ -251,16 +336,38 @@ export function Workspace({
         
         <div className="flex items-center gap-2">
           {hasProject && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNewProject}
-              className="gap-2"
-              data-testid="button-new-project"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              New Project
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveProject}
+                className="gap-2"
+                data-testid="button-save-project"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Save Project
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHistory(true)}
+                className="gap-2"
+                data-testid="button-history"
+              >
+                <History className="w-3.5 h-3.5" />
+                History
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNewProject}
+                className="gap-2"
+                data-testid="button-new-project"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                New Project
+              </Button>
+            </>
           )}
           <ThemeToggle />
         </div>
@@ -374,6 +481,57 @@ export function Workspace({
           onCancel={handleCancelGeneration}
         />
       )}
+      
+      {/* Save Project Dialog */}
+      <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+        <DialogContent data-testid="dialog-save-project">
+          <DialogHeader>
+            <DialogTitle>Save Project</DialogTitle>
+            <DialogDescription>
+              Enter a name for your project to save it to history
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="project-name">Project Name</Label>
+            <Input
+              id="project-name"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="My Awesome Project"
+              className="mt-2"
+              data-testid="input-project-name"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleConfirmSave();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSaveDialog(false)}
+              data-testid="button-cancel-save"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmSave}
+              disabled={saveMutation.isPending}
+              data-testid="button-confirm-save"
+            >
+              {saveMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Project History Panel */}
+      <ProjectHistory
+        open={showHistory}
+        onOpenChange={setShowHistory}
+        onLoadProject={handleLoadProject}
+      />
     </div>
   );
 }

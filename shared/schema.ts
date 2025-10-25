@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,6 +17,28 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Projects table for saving project history
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  name: text("name").notNull(),
+  prompt: text("prompt").notNull(),
+  templateId: text("template_id"),
+  files: jsonb("files").notNull().$type<ProjectFile[]>(),
+  dependencies: jsonb("dependencies").notNull().$type<Record<string, string>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Project = typeof projects.$inferSelect;
 
 // Project generation data structures (in-memory only, no DB)
 export interface ProjectFile {
