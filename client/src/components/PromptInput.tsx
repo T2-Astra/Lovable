@@ -2,12 +2,16 @@ import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Sparkles, Zap } from "lucide-react";
+import { Sparkles, Zap, Layers, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { TemplateSelector } from "./TemplateSelector";
+import { TEMPLATES, type Template } from "@shared/schema";
 
 interface PromptInputProps {
   onGenerate: (prompt: string, template?: string) => void;
   isGenerating?: boolean;
+  selectedTemplate?: Template['id'];
+  onTemplateChange?: (templateId?: Template['id']) => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -33,13 +37,14 @@ const EXAMPLE_PROMPTS = [
   }
 ];
 
-export function PromptInput({ onGenerate, isGenerating }: PromptInputProps) {
+export function PromptInput({ onGenerate, isGenerating, selectedTemplate, onTemplateChange }: PromptInputProps) {
   const [prompt, setPrompt] = useState("");
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const maxChars = 2000;
 
   const handleSubmit = () => {
     if (prompt.trim() && prompt.length >= 10) {
-      onGenerate(prompt);
+      onGenerate(prompt, selectedTemplate);
     }
   };
 
@@ -47,6 +52,15 @@ export function PromptInput({ onGenerate, isGenerating }: PromptInputProps) {
     setPrompt(examplePrompt);
   };
 
+  const handleTemplateSelect = (templateId: Template['id']) => {
+    onTemplateChange?.(templateId);
+  };
+
+  const handleRemoveTemplate = () => {
+    onTemplateChange?.(undefined);
+  };
+
+  const currentTemplate = TEMPLATES.find(t => t.id === selectedTemplate);
   const isValid = prompt.trim().length >= 10 && prompt.length <= maxChars;
 
   return (
@@ -65,6 +79,42 @@ export function PromptInput({ onGenerate, isGenerating }: PromptInputProps) {
             Describe your web application and let AI bring it to life
           </p>
         </div>
+
+        {/* Template Selection */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Layers className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-sm text-muted-foreground">Framework:</span>
+              {currentTemplate ? (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Badge variant="secondary" className="gap-1.5" data-testid="badge-selected-template">
+                    {currentTemplate.name}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleRemoveTemplate}
+                    className="flex-shrink-0"
+                    data-testid="button-remove-template"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">Auto-detect from prompt</span>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowTemplateSelector(true)}
+              disabled={isGenerating}
+              data-testid="button-select-template"
+            >
+              {currentTemplate ? 'Change' : 'Select'}
+            </Button>
+          </div>
+        </Card>
 
         {/* Prompt Input */}
         <Card className="p-6 space-y-4">
@@ -115,6 +165,14 @@ export function PromptInput({ onGenerate, isGenerating }: PromptInputProps) {
             )}
           </Button>
         </Card>
+
+        {/* Template Selector Dialog */}
+        <TemplateSelector
+          open={showTemplateSelector}
+          onOpenChange={setShowTemplateSelector}
+          selectedTemplate={selectedTemplate}
+          onSelectTemplate={handleTemplateSelect}
+        />
 
         {/* Example Prompts */}
         <div className="space-y-3">

@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { Workspace } from "@/components/Workspace";
 import { useStreamingGenerate } from "@/hooks/useStreamingGenerate";
 import { useToast } from "@/hooks/use-toast";
-import type { GenerationResponse } from "@shared/schema";
+import type { GenerationResponse, Template } from "@shared/schema";
 
 export default function Home() {
   const { toast } = useToast();
   const streaming = useStreamingGenerate();
+  const [selectedTemplate, setSelectedTemplate] = useState<Template['id'] | undefined>(undefined);
   
   const handleGenerate = async (prompt: string, template?: string): Promise<GenerationResponse> => {
     try {
@@ -33,6 +35,8 @@ export default function Home() {
       streamingStatus={streaming.status}
       streamingFileName={streaming.fileName}
       streamingProgress={streaming.progress}
+      selectedTemplate={selectedTemplate}
+      onTemplateChange={setSelectedTemplate}
     />
   );
 }

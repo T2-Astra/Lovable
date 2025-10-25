@@ -54,13 +54,52 @@ export type ValidatedGenerationRequest = z.infer<typeof generationRequestSchema>
 
 // Template configurations
 export interface Template {
-  id: string;
+  id: 'react-vite' | 'nextjs' | 'vanilla';
   name: string;
   description: string;
   icon: string;
+  techStack: string[];
   files: ProjectFile[];
   dependencies: Record<string, string>;
 }
+
+// Available templates with full details
+export const TEMPLATES: Template[] = [
+  {
+    id: 'react-vite',
+    name: 'React + Vite',
+    description: 'Modern React application with Vite as the build tool. Lightning-fast HMR and optimized for development.',
+    icon: 'react',
+    techStack: ['React', 'TypeScript', 'Vite', 'ES Modules'],
+    files: [],
+    dependencies: {
+      'react': '^18.2.0',
+      'react-dom': '^18.2.0'
+    }
+  },
+  {
+    id: 'nextjs',
+    name: 'Next.js App Router',
+    description: 'Full-stack React framework with server-side rendering, App Router, and built-in optimizations.',
+    icon: 'nextjs',
+    techStack: ['Next.js', 'React', 'TypeScript', 'App Router'],
+    files: [],
+    dependencies: {
+      'next': '^14.0.0',
+      'react': '^18.2.0',
+      'react-dom': '^18.2.0'
+    }
+  },
+  {
+    id: 'vanilla',
+    name: 'Vanilla JavaScript',
+    description: 'Pure HTML, CSS, and JavaScript with no build tools or frameworks. Simple and lightweight.',
+    icon: 'vanilla',
+    techStack: ['HTML5', 'CSS3', 'JavaScript', 'No Build Tools'],
+    files: [],
+    dependencies: {}
+  }
+];
 
 // SSE Event Types for streaming
 // Note: The 'type' field is sent as the SSE event name, not in the data payload

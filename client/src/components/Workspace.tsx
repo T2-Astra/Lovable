@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Sparkles, FolderTree, FileCode, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { WebContainerManager } from "@/lib/webcontainer";
-import type { ProjectFile, GenerationProgress as ProgressType, GenerationResponse } from "@shared/schema";
+import type { ProjectFile, GenerationProgress as ProgressType, GenerationResponse, Template } from "@shared/schema";
 
 interface WorkspaceProps {
   onGenerate: (prompt: string, template?: string) => Promise<GenerationResponse>;
@@ -19,6 +19,8 @@ interface WorkspaceProps {
   streamingStatus?: string;
   streamingFileName?: string;
   streamingProgress?: number;
+  selectedTemplate?: Template['id'];
+  onTemplateChange?: (templateId?: Template['id']) => void;
 }
 
 export function Workspace({ 
@@ -27,7 +29,9 @@ export function Workspace({
   isGenerating: externalIsGenerating,
   streamingStatus,
   streamingFileName,
-  streamingProgress 
+  streamingProgress,
+  selectedTemplate,
+  onTemplateChange
 }: WorkspaceProps) {
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | undefined>();
@@ -241,12 +245,16 @@ export function Workspace({
           <PromptInput 
             onGenerate={handleGenerate}
             isGenerating={isGenerating}
+            selectedTemplate={selectedTemplate}
+            onTemplateChange={onTemplateChange}
           />
         ) : showPrompt ? (
           <div className="h-full overflow-auto">
             <PromptInput 
               onGenerate={handleGenerate}
               isGenerating={isGenerating}
+              selectedTemplate={selectedTemplate}
+              onTemplateChange={onTemplateChange}
             />
           </div>
         ) : (

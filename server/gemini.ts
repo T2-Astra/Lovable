@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import type { ProjectFile, Template } from "@shared/schema";
+import { TEMPLATES } from "@shared/schema";
 
 // DON'T DELETE THIS COMMENT
 // Follow these instructions when using this blueprint:
@@ -39,6 +40,13 @@ Generate a JSON object with this exact structure:
 
 Generate complete, working code. Do not use placeholders or TODO comments.`;
 
+// Template-specific instructions for Gemini
+const TEMPLATE_INSTRUCTIONS: Record<string, string> = {
+  'react-vite': 'Create a React application using Vite as the build tool. Use TypeScript and modern React patterns with hooks. Include proper component structure, use functional components with hooks, and follow React best practices. Set up Vite configuration and include all necessary files.',
+  'nextjs': 'Create a Next.js application using the App Router (app directory). Use TypeScript and follow Next.js 14+ best practices. Include proper page structure, layouts, and server/client components as appropriate. Follow the App Router conventions and include all necessary Next.js configuration files.',
+  'vanilla': 'Create a simple web application using pure HTML, CSS, and vanilla JavaScript. No build tools, frameworks, or dependencies. Use modern ES6+ JavaScript features. Keep it simple and lightweight with clean, well-organized code.'
+};
+
 export async function generateProject(prompt: string, template?: string): Promise<{
   projectName: string;
   description: string;
@@ -46,8 +54,10 @@ export async function generateProject(prompt: string, template?: string): Promis
   dependencies: Record<string, string>;
 }> {
   try {
-    const templateContext = template ? `\nBase template: ${template}` : '';
-    const fullPrompt = `${prompt}${templateContext}\n\nGenerate a complete web application based on this description. Include all necessary files.`;
+    const templateInstruction = template && TEMPLATE_INSTRUCTIONS[template] 
+      ? `\n\nIMPORTANT - Framework Instructions:\n${TEMPLATE_INSTRUCTIONS[template]}` 
+      : '';
+    const fullPrompt = `${prompt}${templateInstruction}\n\nGenerate a complete web application based on this description. Include all necessary files.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -122,8 +132,10 @@ export async function* generateProjectStream(
   try {
     yield { type: 'status', data: { message: 'Analyzing your prompt...' } };
     
-    const templateContext = template ? `\nBase template: ${template}` : '';
-    const fullPrompt = `${prompt}${templateContext}\n\nGenerate a complete web application based on this description. Include all necessary files.`;
+    const templateInstruction = template && TEMPLATE_INSTRUCTIONS[template] 
+      ? `\n\nIMPORTANT - Framework Instructions:\n${TEMPLATE_INSTRUCTIONS[template]}` 
+      : '';
+    const fullPrompt = `${prompt}${templateInstruction}\n\nGenerate a complete web application based on this description. Include all necessary files.`;
 
     yield { type: 'status', data: { message: 'Planning project structure...' } };
 
@@ -275,37 +287,5 @@ export async function streamGeneration(
 
 // Get available templates
 export function getTemplates(): Template[] {
-  return [
-    {
-      id: 'react-vite',
-      name: 'React + Vite',
-      description: 'Modern React application with Vite build tool',
-      icon: '⚛️',
-      files: [],
-      dependencies: {
-        'react': '^18.2.0',
-        'react-dom': '^18.2.0'
-      }
-    },
-    {
-      id: 'nextjs',
-      name: 'Next.js',
-      description: 'Full-stack React framework with SSR',
-      icon: '▲',
-      files: [],
-      dependencies: {
-        'next': '^14.0.0',
-        'react': '^18.2.0',
-        'react-dom': '^18.2.0'
-      }
-    },
-    {
-      id: 'vanilla',
-      name: 'Vanilla JavaScript',
-      description: 'Pure HTML, CSS, and JavaScript',
-      icon: '🟨',
-      files: [],
-      dependencies: {}
-    }
-  ];
+  return TEMPLATES;
 }
