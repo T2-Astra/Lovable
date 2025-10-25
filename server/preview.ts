@@ -74,7 +74,12 @@ export function canUseSimplePreview(files: ProjectFile[], dependencies: Record<s
   }
   
   // If there are TypeScript or JSX files, we need a build step
-  const hasTypeScript = files.some(f => f.language === 'typescript' || f.path.endsWith('.tsx') || f.path.endsWith('.ts'));
+  const hasTypeScript = files.some(f => 
+    f.language === 'typescript' || 
+    f.path.endsWith('.tsx') || 
+    f.path.endsWith('.ts') ||
+    f.path.endsWith('.jsx')
+  );
   if (hasTypeScript) {
     return false;
   }
@@ -83,12 +88,28 @@ export function canUseSimplePreview(files: ProjectFile[], dependencies: Record<s
   const hasBuildConfig = files.some(f => 
     f.path.includes('package.json') || 
     f.path.includes('vite.config') || 
-    f.path.includes('next.config')
+    f.path.includes('next.config') ||
+    f.path.includes('tsconfig.json') ||
+    f.path.includes('webpack.config') ||
+    f.path.includes('rollup.config')
   );
   if (hasBuildConfig) {
     return false;
   }
   
-  // Otherwise, it's simple HTML/CSS/JS
+  // Check for modern framework indicators
+  const hasFrameworkFiles = files.some(f => 
+    f.path.includes('src/App.jsx') ||
+    f.path.includes('src/App.tsx') ||
+    f.path.includes('src/main.jsx') ||
+    f.path.includes('src/main.tsx') ||
+    f.path.includes('pages/_app') ||
+    f.path.includes('app/layout')
+  );
+  if (hasFrameworkFiles) {
+    return false;
+  }
+  
+  // Otherwise, it's simple HTML/CSS/JS that can run in an iframe
   return true;
 }

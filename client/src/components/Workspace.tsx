@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FileTree } from "./FileTree";
 import { CodeEditor } from "./CodeEditor";
 import { PreviewPanel } from "./PreviewPanel";
@@ -9,6 +9,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Sparkles, FolderTree, FileCode, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { WebContainerManager } from "@/lib/webcontainer";
 import type { ProjectFile, GenerationProgress as ProgressType, GenerationResponse } from "@shared/schema";
 
 interface WorkspaceProps {
@@ -24,9 +25,88 @@ export function Workspace({ onGenerate, generatedProject, isGenerating: external
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [showPrompt, setShowPrompt] = useState(true);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [useWebContainer, setUseWebContainer] = useState(false);
+  const [webContainerError, setWebContainerError] = useState<string>();
   
+  const webContainerRef = useRef<WebContainerManager | null>(null);
   const isGenerating = externalIsGenerating || false;
   const hasProject = files.length > 0;
+  
+  // Initialize WebContainer manager once
+  useEffect(() => {
+    if (!webContainerRef.current) {
+      webContainerRef.current = new WebContainerManager();
+    }
+    
+    return () => {
+      // Cleanup on unmount
+      if (webContainerRef.current) {
+        webContainerRef.current.teardown();
+      }
+    };
+  }, []);
+  
+  // Determine if project needs WebContainer
+  const needsWebContainer = (project: GenerationResponse): boolean => {
+    const { files, dependencies } = project;
+    
+    // Has npm dependencies
+    if (Object.keys(dependencies).length > 0) {
+      return true;
+    }
+    
+    // Has TypeScript or JSX files
+    const hasTypeScript = files.some(f => 
+      f.language === 'typescript' || 
+      f.path.endsWith('.tsx') || 
+      f.path.endsWith('.ts') ||
+      f.path.endsWith('.jsx')
+    );
+    if (hasTypeScript) {
+      return true;
+    }
+    
+    // Has build config files
+    const hasBuildConfig = files.some(f => 
+      f.path.includes('package.json') || 
+      f.path.includes('vite.config') || 
+      f.path.includes('next.config') ||
+      f.path.includes('tsconfig.json')
+    );
+    if (hasBuildConfig) {
+      return true;
+    }
+    
+    return false;
+  };
+  
+  // Setup WebContainer when project is generated
+  const setupWebContainerProject = async (project: GenerationResponse) => {
+    if (!webContainerRef.current) {
+      setWebContainerError('WebContainer not initialized');
+      return;
+    }
+
+    try {
+      setWebContainerError(undefined);
+      
+      // Setup the project in WebContainer
+      const serverUrl = await webContainerRef.current.setupProject(
+        project.files,
+        'npm run dev'
+      );
+      
+      setPreviewUrl(serverUrl);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to setup WebContainer';
+      console.error('WebContainer setup error:', error);
+      setWebContainerError(errorMessage);
+      
+      // Fallback to simple preview on error
+      setUseWebContainer(false);
+      setPreviewUrl('/api/preview');
+    }
+  };
   
   // Update files when project is generated
   useEffect(() => {
@@ -36,8 +116,18 @@ export function Workspace({ onGenerate, generatedProject, isGenerating: external
       if (generatedProject.files.length > 0) {
         setSelectedFile(generatedProject.files[0]);
       }
-      // Use the preview API endpoint for better compatibility
-      setPreviewUrl('/api/preview');
+      
+      // Determine preview method
+      const needsContainer = needsWebContainer(generatedProject);
+      setUseWebContainer(needsContainer);
+      
+      if (needsContainer) {
+        // Use WebContainer for complex projects
+        setupWebContainerProject(generatedProject);
+      } else {
+        // Use simple preview for static HTML/CSS/JS
+        setPreviewUrl('/api/preview');
+      }
       
       // Mark generation as complete
       setProgress({
@@ -101,12 +191,23 @@ export function Workspace({ onGenerate, generatedProject, isGenerating: external
     }
   };
   
-  const handleNewProject = () => {
+  const handleNewProject = async () => {
+    // Cleanup WebContainer if it was used
+    if (useWebContainer && webContainerRef.current) {
+      try {
+        await webContainerRef.current.teardown();
+      } catch (error) {
+        console.error('Failed to teardown WebContainer:', error);
+      }
+    }
+    
     setFiles([]);
     setSelectedFile(undefined);
     setPreviewUrl(undefined);
     setShowPrompt(true);
     setProgress(null);
+    setUseWebContainer(false);
+    setWebContainerError(undefined);
   };
   
   return (
@@ -222,6 +323,9 @@ export function Workspace({ onGenerate, generatedProject, isGenerating: external
                 <PreviewPanel
                   previewUrl={previewUrl}
                   isLoading={isGenerating}
+                  error={webContainerError}
+                  webContainer={webContainerRef.current || undefined}
+                  useWebContainer={useWebContainer}
                 />
               </div>
             </div>
