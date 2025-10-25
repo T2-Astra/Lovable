@@ -69,7 +69,7 @@ export class DbStorage implements IStorage {
       dependencies: project.dependencies,
     };
     
-    const [savedProject] = await db.insert(projects).values(insertData).returning();
+    const [savedProject] = await db.insert(projects).values(insertData as any).returning();
     return savedProject;
   }
   

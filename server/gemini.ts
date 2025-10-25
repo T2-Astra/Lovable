@@ -173,12 +173,12 @@ export async function* generateProjectStream(
     let accumulatedText = '';
     let filesSeen = new Set<string>();
     
-    for await (const chunk of streamResponse.stream) {
-      if (!chunk || typeof chunk.text !== 'function') {
+    for await (const chunk of streamResponse) {
+      if (!chunk || !chunk.text) {
         continue;
       }
       
-      const chunkText = chunk.text();
+      const chunkText = chunk.text;
       if (chunkText) {
         accumulatedText += chunkText;
       }
