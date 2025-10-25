@@ -171,7 +171,7 @@ export async function* generateProjectStream(
     yield { type: 'status', data: { message: 'Generating code...' } };
     
     let accumulatedText = '';
-    let filesSeen = new Set<string>();
+    let chunkCount = 0;
     
     for await (const chunk of streamResponse) {
       if (!chunk || !chunk.text) {
@@ -181,28 +181,16 @@ export async function* generateProjectStream(
       const chunkText = chunk.text;
       if (chunkText) {
         accumulatedText += chunkText;
-      }
-      
-      try {
-        const partial = JSON.parse(accumulatedText);
+        chunkCount++;
         
-        if (partial.files && Array.isArray(partial.files)) {
-          for (const file of partial.files) {
-            if (file.path && !filesSeen.has(file.path)) {
-              filesSeen.add(file.path);
-              const progress = Math.min(90, 30 + (filesSeen.size * 5));
-              yield { 
-                type: 'file', 
-                data: { 
-                  fileName: file.path, 
-                  progress 
-                } 
-              };
-            }
-          }
-        }
-      } catch (e) {
-        // Partial JSON, continue accumulating
+        // Update progress based on chunks received (estimate)
+        const progress = Math.min(90, 30 + (chunkCount * 2));
+        yield { 
+          type: 'status', 
+          data: { 
+            message: 'Generating code...',
+          } 
+        };
       }
     }
 
