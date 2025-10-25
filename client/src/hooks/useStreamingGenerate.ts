@@ -38,6 +38,8 @@ export function useStreamingGenerate() {
     return new Promise((resolve, reject) => {
       cleanup();
       
+      let isCompleted = false;
+      
       setState({
         status: 'Initializing...',
         fileName: undefined,
@@ -84,6 +86,7 @@ export function useStreamingGenerate() {
       eventSource.addEventListener('complete', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
+          isCompleted = true;
           setState(prev => ({
             ...prev,
             status: 'Complete',
@@ -107,6 +110,8 @@ export function useStreamingGenerate() {
       });
       
       eventSource.addEventListener('error', (event: MessageEvent) => {
+        if (isCompleted) return;
+        
         try {
           const data = JSON.parse(event.data);
           const errorMessage = data.error || 'Unknown error occurred';
@@ -130,6 +135,8 @@ export function useStreamingGenerate() {
       });
       
       eventSource.onerror = () => {
+        if (isCompleted) return;
+        
         const errorMessage = 'Connection to server lost';
         setState(prev => ({
           ...prev,

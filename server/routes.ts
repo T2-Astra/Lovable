@@ -47,13 +47,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (event.type === 'complete' && event.data.project) {
           await storage.saveProject(sessionId, event.data.project);
           
-          // Auto-save to history with generated name
-          try {
-            const autoSaveName = `${event.data.project.description?.substring(0, 50) || 'Generated Project'} - ${new Date().toLocaleString()}`;
-            await storage.saveToHistory(sessionId, autoSaveName, event.data.project, template as string | undefined);
-            console.log(`Auto-saved project: ${autoSaveName}`);
-          } catch (error) {
-            console.error('Auto-save failed:', error);
+          // Auto-save to history with generated name (optional - requires database)
+          if (process.env.DATABASE_URL) {
+            try {
+              const autoSaveName = `${event.data.project.description?.substring(0, 50) || 'Generated Project'} - ${new Date().toLocaleString()}`;
+              await storage.saveToHistory(sessionId, autoSaveName, event.data.project, template as string | undefined);
+              console.log(`Auto-saved project: ${autoSaveName}`);
+            } catch (error) {
+              console.error('Auto-save to history failed:', error);
+            }
           }
         }
       }
