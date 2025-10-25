@@ -208,6 +208,23 @@ export class WebContainerManager {
   }
 
   /**
+   * Update a file in the WebContainer filesystem
+   */
+  async updateFile(path: string, content: string): Promise<void> {
+    if (!this.container) {
+      throw new Error('WebContainer not initialized');
+    }
+
+    try {
+      await this.container.fs.writeFile(path, content);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update file';
+      console.error('Failed to update file in WebContainer:', error);
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
    * Clean up and tear down the container
    */
   async teardown(): Promise<void> {

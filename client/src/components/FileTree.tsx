@@ -7,6 +7,7 @@ interface FileTreeProps {
   files: ProjectFile[];
   onFileSelect?: (file: ProjectFile) => void;
   selectedFile?: string;
+  modifiedFiles?: Set<string>;
 }
 
 interface TreeNode {
@@ -54,12 +55,14 @@ function TreeItem({
   node, 
   level = 0, 
   onFileSelect, 
-  selectedFile 
+  selectedFile,
+  modifiedFiles
 }: { 
   node: TreeNode; 
   level?: number; 
   onFileSelect?: (file: ProjectFile) => void;
   selectedFile?: string;
+  modifiedFiles?: Set<string>;
 }) {
   const [isOpen, setIsOpen] = useState(level === 0);
   
@@ -72,6 +75,7 @@ function TreeItem({
   };
   
   const isSelected = selectedFile === node.path;
+  const isModified = node.type === 'file' && modifiedFiles?.has(node.path);
   
   return (
     <div>
@@ -105,6 +109,9 @@ function TreeItem({
           </>
         )}
         <span className="truncate flex-1">{node.name}</span>
+        {isModified && (
+          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" title="Modified" />
+        )}
       </div>
       
       {node.type === 'folder' && isOpen && node.children && (
@@ -116,6 +123,7 @@ function TreeItem({
               level={level + 1}
               onFileSelect={onFileSelect}
               selectedFile={selectedFile}
+              modifiedFiles={modifiedFiles}
             />
           ))}
         </div>
@@ -124,7 +132,7 @@ function TreeItem({
   );
 }
 
-export function FileTree({ files, onFileSelect, selectedFile }: FileTreeProps) {
+export function FileTree({ files, onFileSelect, selectedFile, modifiedFiles }: FileTreeProps) {
   const tree = buildTree(files);
   
   if (files.length === 0) {
@@ -144,6 +152,7 @@ export function FileTree({ files, onFileSelect, selectedFile }: FileTreeProps) {
             node={node}
             onFileSelect={onFileSelect}
             selectedFile={selectedFile}
+            modifiedFiles={modifiedFiles}
           />
         ))}
       </div>

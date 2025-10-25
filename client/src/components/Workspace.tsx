@@ -41,6 +41,7 @@ export function Workspace({
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [useWebContainer, setUseWebContainer] = useState(false);
   const [webContainerError, setWebContainerError] = useState<string>();
+  const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
   
   const webContainerRef = useRef<WebContainerManager | null>(null);
   const isGenerating = externalIsGenerating || false;
@@ -189,6 +190,31 @@ export function Workspace({
     }
   };
   
+  const handleUpdateFile = async (file: ProjectFile, newContent: string) => {
+    // Update the file in the files array
+    const updatedFiles = files.map(f => 
+      f.path === file.path ? { ...f, content: newContent } : f
+    );
+    setFiles(updatedFiles);
+    
+    // Update selected file if it's the one being edited
+    if (selectedFile?.path === file.path) {
+      setSelectedFile({ ...file, content: newContent });
+    }
+    
+    // Mark file as modified
+    setModifiedFiles(prev => new Set(prev).add(file.path));
+    
+    // Sync to WebContainer if active
+    if (useWebContainer && webContainerRef.current) {
+      try {
+        await webContainerRef.current.updateFile(file.path, newContent);
+      } catch (error) {
+        console.error('Failed to sync file to WebContainer:', error);
+      }
+    }
+  };
+
   const handleNewProject = async () => {
     // Cleanup WebContainer if it was used
     if (useWebContainer && webContainerRef.current) {
@@ -206,6 +232,7 @@ export function Workspace({
     setProgress(null);
     setUseWebContainer(false);
     setWebContainerError(undefined);
+    setModifiedFiles(new Set());
   };
   
   return (
@@ -286,6 +313,7 @@ export function Workspace({
                       files={files}
                       onFileSelect={setSelectedFile}
                       selectedFile={selectedFile?.path}
+                      modifiedFiles={modifiedFiles}
                     />
                   </div>
                 </div>
@@ -311,7 +339,11 @@ export function Workspace({
                 <span className="text-sm font-medium text-foreground">Code</span>
               </div>
               <div className="flex-1 overflow-hidden">
-                <CodeEditor file={selectedFile} />
+                <CodeEditor 
+                  file={selectedFile} 
+                  onSave={handleUpdateFile}
+                  modifiedFiles={modifiedFiles}
+                />
               </div>
             </div>
             
