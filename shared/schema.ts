@@ -61,3 +61,45 @@ export interface Template {
   files: ProjectFile[];
   dependencies: Record<string, string>;
 }
+
+// SSE Event Types for streaming
+// Note: The 'type' field is sent as the SSE event name, not in the data payload
+export interface StatusEventData {
+  message: string;
+}
+
+export interface FileEventData {
+  fileName: string;
+  progress: number;
+}
+
+export interface CompleteEventData {
+  project: GenerationResponse;
+}
+
+export interface ErrorEventData {
+  error: string;
+}
+
+// Full event structure (used internally in generators)
+export interface StatusEvent {
+  type: 'status';
+  data: StatusEventData;
+}
+
+export interface FileEvent {
+  type: 'file';
+  data: FileEventData;
+}
+
+export interface CompleteEvent {
+  type: 'complete';
+  data: CompleteEventData;
+}
+
+export interface ErrorEvent {
+  type: 'error';
+  data: ErrorEventData;
+}
+
+export type StreamEvent = StatusEvent | FileEvent | CompleteEvent | ErrorEvent;

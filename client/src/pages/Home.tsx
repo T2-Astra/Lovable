@@ -1,54 +1,38 @@
 import { Workspace } from "@/components/Workspace";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useStreamingGenerate } from "@/hooks/useStreamingGenerate";
 import { useToast } from "@/hooks/use-toast";
 import type { GenerationResponse } from "@shared/schema";
 
 export default function Home() {
   const { toast } = useToast();
-  
-  const generateMutation = useMutation({
-    mutationFn: async (data: { prompt: string; template?: string }) => {
-      const response = await apiRequest(
-        'POST',
-        '/api/generate',
-        data
-      );
-      const json = await response.json() as GenerationResponse;
-      return json;
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Generation Complete!",
-        description: `Successfully generated ${data.files.length} files`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Generation Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  const streaming = useStreamingGenerate();
   
   const handleGenerate = async (prompt: string, template?: string): Promise<GenerationResponse> => {
-    return new Promise((resolve, reject) => {
-      generateMutation.mutate(
-        { prompt, template },
-        {
-          onSuccess: (data) => resolve(data),
-          onError: (error) => reject(error),
-        }
-      );
-    });
+    try {
+      const result = await streaming.generate(prompt, template);
+      toast({
+        title: "Generation Complete!",
+        description: `Successfully generated ${result.files.length} files`,
+      });
+      return result;
+    } catch (error) {
+      toast({
+        title: "Generation Failed",
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: "destructive",
+      });
+      throw error;
+    }
   };
   
   return (
     <Workspace 
       onGenerate={handleGenerate} 
-      generatedProject={generateMutation.data}
-      isGenerating={generateMutation.isPending}
+      generatedProject={streaming.project}
+      isGenerating={streaming.isStreaming}
+      streamingStatus={streaming.status}
+      streamingFileName={streaming.fileName}
+      streamingProgress={streaming.progress}
     />
   );
 }

@@ -115,6 +115,128 @@ export async function generateProject(prompt: string, template?: string): Promis
   }
 }
 
+export async function* generateProjectStream(
+  prompt: string,
+  template?: string
+): AsyncGenerator<{type: string; data: any}> {
+  try {
+    yield { type: 'status', data: { message: 'Analyzing your prompt...' } };
+    
+    const templateContext = template ? `\nBase template: ${template}` : '';
+    const fullPrompt = `${prompt}${templateContext}\n\nGenerate a complete web application based on this description. Include all necessary files.`;
+
+    yield { type: 'status', data: { message: 'Planning project structure...' } };
+
+    const streamResponse = await ai.models.generateContentStream({
+      model: "gemini-2.5-flash",
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "object",
+          properties: {
+            projectName: { type: "string" },
+            description: { type: "string" },
+            files: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  path: { type: "string" },
+                  content: { type: "string" },
+                  language: { type: "string" }
+                },
+                required: ["path", "content", "language"]
+              }
+            }
+          },
+          required: ["projectName", "description", "files"]
+        },
+      },
+      contents: fullPrompt,
+    });
+
+    yield { type: 'status', data: { message: 'Generating code...' } };
+    
+    let accumulatedText = '';
+    let filesSeen = new Set<string>();
+    
+    for await (const chunk of streamResponse.stream) {
+      if (!chunk || typeof chunk.text !== 'function') {
+        continue;
+      }
+      
+      const chunkText = chunk.text();
+      if (chunkText) {
+        accumulatedText += chunkText;
+      }
+      
+      try {
+        const partial = JSON.parse(accumulatedText);
+        
+        if (partial.files && Array.isArray(partial.files)) {
+          for (const file of partial.files) {
+            if (file.path && !filesSeen.has(file.path)) {
+              filesSeen.add(file.path);
+              const progress = Math.min(90, 30 + (filesSeen.size * 5));
+              yield { 
+                type: 'file', 
+                data: { 
+                  fileName: file.path, 
+                  progress 
+                } 
+              };
+            }
+          }
+        }
+      } catch (e) {
+        // Partial JSON, continue accumulating
+      }
+    }
+
+    const finalJson = accumulatedText;
+    if (!finalJson) {
+      throw new Error("Empty response from Gemini");
+    }
+
+    const data = JSON.parse(finalJson);
+    
+    if (!data.projectName || !data.files || !Array.isArray(data.files)) {
+      throw new Error("Invalid response structure from Gemini");
+    }
+
+    const dependencies: Record<string, string> = {};
+    const packageJsonFile = data.files.find((f: ProjectFile) => f.path === 'package.json');
+    if (packageJsonFile) {
+      try {
+        const packageJson = JSON.parse(packageJsonFile.content);
+        Object.assign(dependencies, packageJson.dependencies || {});
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+
+    const result = {
+      projectName: data.projectName,
+      description: data.description || "Generated web application",
+      files: data.files,
+      dependencies
+    };
+
+    yield { type: 'status', data: { message: 'Finalizing project...' } };
+    yield { type: 'complete', data: { project: result } };
+    
+  } catch (error) {
+    console.error("Gemini streaming error:", error);
+    yield { 
+      type: 'error', 
+      data: { 
+        error: error instanceof Error ? error.message : 'Unknown error during generation' 
+      } 
+    };
+  }
+}
+
 export async function streamGeneration(
   prompt: string,
   template?: string,

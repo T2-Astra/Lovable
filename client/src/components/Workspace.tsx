@@ -16,9 +16,19 @@ interface WorkspaceProps {
   onGenerate: (prompt: string, template?: string) => Promise<GenerationResponse>;
   generatedProject?: GenerationResponse | null;
   isGenerating?: boolean;
+  streamingStatus?: string;
+  streamingFileName?: string;
+  streamingProgress?: number;
 }
 
-export function Workspace({ onGenerate, generatedProject, isGenerating: externalIsGenerating }: WorkspaceProps) {
+export function Workspace({ 
+  onGenerate, 
+  generatedProject, 
+  isGenerating: externalIsGenerating,
+  streamingStatus,
+  streamingFileName,
+  streamingProgress 
+}: WorkspaceProps) {
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | undefined>();
   const [progress, setProgress] = useState<ProgressType | null>(null);
@@ -143,36 +153,20 @@ export function Workspace({ onGenerate, generatedProject, isGenerating: external
     }
   }, [generatedProject]);
   
-  // Show progress during generation
+  // Show progress during generation using streaming data
   useEffect(() => {
-    if (isGenerating && !progress) {
+    if (isGenerating) {
       setShowPrompt(false);
       setProgress({
-        step: 'analyzing',
-        progress: 10,
+        step: streamingStatus || 'Starting...',
+        currentFile: streamingFileName,
+        progress: streamingProgress || 0,
         complete: false
       });
-      
-      const steps = [
-        { step: 'planning', progress: 30, delay: 1000 },
-        { step: 'generating', progress: 60, delay: 2000 },
-        { step: 'dependencies', progress: 85, delay: 3000 }
-      ];
-      
-      steps.forEach(({ step, progress: prog, delay }) => {
-        setTimeout(() => {
-          if (isGenerating) {
-            setProgress({
-              step,
-              currentFile: step === 'generating' ? 'index.html' : undefined,
-              progress: prog,
-              complete: false
-            });
-          }
-        }, delay);
-      });
+    } else if (!isGenerating && progress && !progress.complete) {
+      setProgress(null);
     }
-  }, [isGenerating]);
+  }, [isGenerating, streamingStatus, streamingFileName, streamingProgress]);
   
   const handleGenerate = async (prompt: string, template?: string) => {
     try {

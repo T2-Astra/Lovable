@@ -1,12 +1,69 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { generateProject, streamGeneration, getTemplates } from "./gemini";
+import { generateProject, streamGeneration, getTemplates, generateProjectStream } from "./gemini";
 import { generationRequestSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { generatePreviewHTML, canUseSimplePreview } from "./preview";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // SSE streaming endpoint for real-time generation
+  app.get("/api/generate/stream", async (req, res) => {
+    const { prompt, template } = req.query;
+    
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+    
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    
+    let streamAborted = false;
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log('Client disconnected from SSE stream');
+      streamAborted = true;
+    });
+    
+    try {
+      const sessionId = req.sessionID || 'default';
+      
+      for await (const event of generateProjectStream(prompt, template as string | undefined)) {
+        // Stop if client disconnected
+        if (streamAborted) {
+          console.log('Aborting stream due to client disconnect');
+          break;
+        }
+        
+        const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+        res.write(sseData);
+        
+        // If complete, save the project
+        if (event.type === 'complete' && event.data.project) {
+          await storage.saveProject(sessionId, event.data.project);
+        }
+      }
+      
+      if (!streamAborted) {
+        res.end();
+      }
+    } catch (error) {
+      console.error("SSE streaming error:", error);
+      if (!streamAborted) {
+        const errorEvent = `event: error\ndata: ${JSON.stringify({ 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        })}\n\n`;
+        res.write(errorEvent);
+        res.end();
+      }
+    }
+  });
+  
   // Generate a new project using Gemini AI
   app.post("/api/generate", async (req, res) => {
     try {

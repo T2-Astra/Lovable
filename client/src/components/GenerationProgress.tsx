@@ -19,14 +19,27 @@ const GENERATION_STEPS = [
 
 export function GenerationProgress({ progress, onCancel }: GenerationProgressProps) {
   const getCurrentStepIndex = () => {
+    const step = progress.step.toLowerCase();
     const stepMap: Record<string, number> = {
       'analyzing': 0,
+      'analyzing your prompt': 0,
       'planning': 1,
+      'planning project structure': 1,
       'generating': 2,
+      'generating code': 2,
       'dependencies': 3,
+      'finalizing': 3,
+      'finalizing project': 3,
       'complete': 4
     };
-    return stepMap[progress.step] || 0;
+    
+    for (const [key, value] of Object.entries(stepMap)) {
+      if (step.includes(key)) {
+        return value;
+      }
+    }
+    
+    return progress.progress < 30 ? 0 : progress.progress < 60 ? 2 : 3;
   };
   
   const currentStepIndex = getCurrentStepIndex();
