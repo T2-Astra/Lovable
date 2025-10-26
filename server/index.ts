@@ -29,6 +29,13 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
+// Add cross-origin isolation headers for WebContainer support
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  next();
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;

@@ -20,6 +20,9 @@ When generating code:
 5. Ensure responsive design and accessibility
 6. Use semantic HTML and proper CSS organization
 7. Generate working, functional code that runs without errors
+8. Use consistent formatting with 2-space indentation for all code
+9. Ensure proper alignment and structure in JSX/TSX files
+10. Follow proper code formatting conventions for each language
 
 Response format:
 Generate a JSON object with this exact structure:
@@ -42,9 +45,9 @@ Generate complete, working code. Do not use placeholders or TODO comments.`;
 
 // Template-specific instructions for Gemini
 const TEMPLATE_INSTRUCTIONS: Record<string, string> = {
-  'react-vite': 'Create a React application using Vite as the build tool. Use TypeScript and modern React patterns with hooks. Include proper component structure, use functional components with hooks, and follow React best practices. Set up Vite configuration and include all necessary files.',
-  'nextjs': 'Create a Next.js application using the App Router (app directory). Use TypeScript and follow Next.js 14+ best practices. Include proper page structure, layouts, and server/client components as appropriate. Follow the App Router conventions and include all necessary Next.js configuration files.',
-  'vanilla': 'Create a simple web application using pure HTML, CSS, and vanilla JavaScript. No build tools, frameworks, or dependencies. Use modern ES6+ JavaScript features. Keep it simple and lightweight with clean, well-organized code.'
+  'react-vite': 'Create a React application using Vite as the build tool. Use TypeScript and modern React patterns with hooks. Include proper component structure, use functional components with hooks, and follow React best practices. Set up Vite configuration and include all necessary files. IMPORTANT: Use consistent 2-space indentation throughout all files. Properly align JSX elements and ensure clean, readable code structure. Format all imports, exports, and component definitions with proper spacing.',
+  'nextjs': 'Create a Next.js application using the App Router (app directory). Use TypeScript and follow Next.js 14+ best practices. Include proper page structure, layouts, and server/client components as appropriate. Follow the App Router conventions and include all necessary Next.js configuration files. IMPORTANT: Use consistent 2-space indentation throughout all files. Properly align JSX elements and ensure clean, readable code structure. Format all imports, exports, and component definitions with proper spacing.',
+  'vanilla': 'Create a simple web application using pure HTML, CSS, and vanilla JavaScript. No build tools, frameworks, or dependencies. Use modern ES6+ JavaScript features. Keep it simple and lightweight with clean, well-organized code. IMPORTANT: Use consistent 2-space indentation for HTML, CSS, and JavaScript. Properly format and align all code elements with clean structure and proper spacing.'
 };
 
 export async function generateProject(prompt: string, template?: string): Promise<{
