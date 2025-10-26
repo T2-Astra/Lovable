@@ -87,21 +87,20 @@ This application allows users to describe a web application in plain English and
 
 ## Current Limitations
 
-- **Simple Projects Only**: Currently supports vanilla HTML/CSS/JavaScript projects
-- **No Build Process**: React, TypeScript, and framework projects are generated but cannot be previewed yet
 - **No Editing**: Generated code is read-only (viewing only, no editing)
 - **Session Only**: Projects are not persisted to database, only in-memory during session
 - **No Export**: Cannot download generated projects as ZIP files yet
+- **System Fonts Only**: Uses system fonts instead of custom web fonts to maintain cross-origin isolation for WebContainer
 
 ## Future Enhancements
 
-- WebContainer integration for running React, Next.js, and other framework projects
 - Real-time streaming of AI generation progress
 - Code editing capabilities with live preview updates
 - Project export as ZIP files
 - User accounts and project history
 - Collaborative editing features
 - Version control integration
+- Custom web font support with proper CORS configuration
 
 ## Development
 
@@ -139,8 +138,15 @@ The application has been thoroughly tested with end-to-end tests covering:
 
 All tests passed successfully with real Gemini API integration.
 
-## Recent Changes
+## Recent Changes (October 26, 2025)
 
+### WebContainer Support Enabled
+- **Cross-Origin Isolation**: Added `Cross-Origin-Embedder-Policy: require-corp` and `Cross-Origin-Opener-Policy: same-origin` headers to enable SharedArrayBuffer support
+- **WebContainer Preview**: React, Next.js, and framework projects now work with WebContainer for in-browser build and preview
+- **System Fonts**: Replaced Google Fonts with system font stacks to maintain cross-origin isolation compliance
+- **Code Formatting**: Enhanced Gemini prompts with explicit 2-space indentation and alignment instructions for cleaner generated code
+
+### Previous Updates
 - Fixed Gemini API response schema to properly handle generated projects
 - Added session management for proper per-user project storage
 - Implemented preview HTML generator for static projects
