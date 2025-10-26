@@ -43,11 +43,35 @@ export class WebContainerManager {
 
     this.initPromise = (async () => {
       try {
+        // Check if cross-origin isolation is enabled
+        if (typeof window !== 'undefined') {
+          console.log('Cross-Origin Isolation Status:', {
+            crossOriginIsolated: window.crossOriginIsolated,
+            isSecureContext: window.isSecureContext,
+            sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined'
+          });
+
+          if (!window.crossOriginIsolated) {
+            const error = new Error(
+              'WebContainer requires cross-origin isolation. Please ensure COEP and COOP headers are set correctly. ' +
+              'Try hard refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).'
+            );
+            this.updateStatus({ 
+              isBooting: false, 
+              error: error.message 
+            });
+            throw error;
+          }
+        }
+
         this.updateStatus({ isBooting: true });
+        console.log('Booting WebContainer...');
         this.container = await WebContainer.boot();
+        console.log('WebContainer booted successfully');
         this.updateStatus({ isBooting: false });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to boot WebContainer';
+        console.error('WebContainer boot failed:', error);
         this.updateStatus({ 
           isBooting: false, 
           error: errorMessage 
