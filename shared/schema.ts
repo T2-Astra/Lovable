@@ -49,7 +49,7 @@ export interface ProjectFile {
 
 export interface GenerationRequest {
   prompt: string;
-  template?: 'react-vite' | 'nextjs' | 'vanilla';
+  template?: 'react-vite' | 'nextjs' | 'html-css-js';
 }
 
 export interface GenerationResponse {
@@ -69,14 +69,14 @@ export interface GenerationProgress {
 // Validation schemas
 export const generationRequestSchema = z.object({
   prompt: z.string().min(10, "Prompt must be at least 10 characters").max(2000, "Prompt too long"),
-  template: z.enum(['react-vite', 'nextjs', 'vanilla']).optional(),
+  template: z.enum(['react-vite', 'nextjs', 'html-css-js']).optional(),
 });
 
 export type ValidatedGenerationRequest = z.infer<typeof generationRequestSchema>;
 
 // Template configurations
 export interface Template {
-  id: 'react-vite' | 'nextjs' | 'vanilla';
+  id: 'react-vite' | 'nextjs' | 'html-css-js';
   name: string;
   description: string;
   icon: string;
@@ -113,11 +113,11 @@ export const TEMPLATES: Template[] = [
     }
   },
   {
-    id: 'vanilla',
-    name: 'Vanilla JavaScript',
-    description: 'Pure HTML, CSS, and JavaScript with no build tools or frameworks. Simple and lightweight.',
-    icon: 'vanilla',
-    techStack: ['HTML5', 'CSS3', 'JavaScript', 'No Build Tools'],
+    id: 'html-css-js',
+    name: 'HTML + CSS + JS',
+    description: 'Basic web development with HTML, CSS, and JavaScript. Perfect for learning and simple projects.',
+    icon: 'html5',
+    techStack: ['HTML5', 'CSS3', 'JavaScript'],
     files: [],
     dependencies: {}
   }

@@ -5,6 +5,7 @@ import { generateProject, streamGeneration, getTemplates, generateProjectStream 
 import { generationRequestSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { generatePreviewHTML, canUseSimplePreview } from "./preview";
+import chatRoutes from "./routes/chat";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // SSE streaming endpoint for real-time generation
@@ -278,6 +279,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `);
     }
   });
+
+  // Register chat routes
+  app.use('/api/chat', chatRoutes);
 
   const httpServer = createServer(app);
 

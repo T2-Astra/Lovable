@@ -9,12 +9,13 @@ import { GenerationProgress } from "./GenerationProgress";
 import { EmptyState } from "./EmptyState";
 import { ThemeToggle } from "./ThemeToggle";
 import { ProjectHistory } from "./ProjectHistory";
+import { ChatPanel } from "./ChatPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sparkles, FolderTree, FileCode, Eye, ChevronLeft, ChevronRight, Save, History } from "lucide-react";
+import { Sparkles, FolderTree, FileCode, Eye, ChevronLeft, ChevronRight, Save, History, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { WebContainerManager } from "@/lib/webcontainer";
 import type { ProjectFile, GenerationProgress as ProgressType, GenerationResponse, Template, Project } from "@shared/schema";
@@ -28,6 +29,7 @@ interface WorkspaceProps {
   streamingProgress?: number;
   selectedTemplate?: Template['id'];
   onTemplateChange?: (templateId?: Template['id']) => void;
+  onBack?: () => void;
 }
 
 export function Workspace({ 
@@ -38,7 +40,8 @@ export function Workspace({
   streamingFileName,
   streamingProgress,
   selectedTemplate,
-  onTemplateChange
+  onTemplateChange,
+  onBack
 }: WorkspaceProps) {
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | undefined>();
@@ -46,6 +49,8 @@ export function Workspace({
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [showPrompt, setShowPrompt] = useState(true);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [showChatPanel, setShowChatPanel] = useState(true);
+  const [showFileTree, setShowFileTree] = useState(false);
   const [useWebContainer, setUseWebContainer] = useState(false);
   const [webContainerError, setWebContainerError] = useState<string>();
   const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
@@ -228,6 +233,37 @@ export function Workspace({
     }
   };
 
+  const handleUpdateFilesFromChat = (updatedFiles: ProjectFile[]) => {
+    setFiles(updatedFiles);
+    
+    // Update selected file if it was modified
+    if (selectedFile) {
+      const updatedSelectedFile = updatedFiles.find(f => f.path === selectedFile.path);
+      if (updatedSelectedFile) {
+        setSelectedFile(updatedSelectedFile);
+      }
+    }
+    
+    // Mark all updated files as modified
+    const updatedPaths = updatedFiles.map(f => f.path);
+    setModifiedFiles(prev => {
+      const newSet = new Set(prev);
+      updatedPaths.forEach(path => newSet.add(path));
+      return newSet;
+    });
+    
+    // Sync to WebContainer if active
+    if (useWebContainer && webContainerRef.current) {
+      updatedFiles.forEach(async (file) => {
+        try {
+          await webContainerRef.current!.updateFile(file.path, file.content);
+        } catch (error) {
+          console.error('Failed to sync file to WebContainer:', error);
+        }
+      });
+    }
+  };
+
   const saveMutation = useMutation({
     mutationFn: async ({ name, templateId }: { name: string; templateId?: string }) => {
       return await apiRequest('POST', '/api/projects/save', { name, templateId });
@@ -318,6 +354,11 @@ export function Workspace({
     setWebContainerError(undefined);
     setModifiedFiles(new Set());
     setCurrentProjectData(null);
+    
+    // Go back to the Astra home page
+    if (onBack) {
+      onBack();
+    }
   };
   
   return (
@@ -337,6 +378,26 @@ export function Workspace({
         <div className="flex items-center gap-2">
           {hasProject && (
             <>
+              <Button
+                variant={showChatPanel ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowChatPanel(!showChatPanel)}
+                className="gap-2"
+                data-testid="button-toggle-chat"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Chat
+              </Button>
+              <Button
+                variant={showFileTree ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowFileTree(!showFileTree)}
+                className="gap-2"
+                data-testid="button-toggle-files"
+              >
+                <FolderTree className="w-3.5 h-3.5" />
+                Files
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -393,27 +454,19 @@ export function Workspace({
           </div>
         ) : (
           <div className="h-full flex">
-            {/* Left Panel - File Explorer */}
-            <div className={`
-              border-r border-border bg-sidebar transition-all duration-300 flex-shrink-0
-              ${leftPanelCollapsed ? 'w-0' : 'w-64'}
-            `}>
-              {!leftPanelCollapsed && (
+            {/* Left Panel - Chat or File Explorer */}
+            <div className="w-80 border-r border-border bg-sidebar flex-shrink-0">
+              {showChatPanel ? (
+                <ChatPanel 
+                  files={files}
+                  onUpdateFiles={handleUpdateFilesFromChat}
+                  selectedFile={selectedFile}
+                />
+              ) : showFileTree ? (
                 <div className="h-full flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border">
-                    <div className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground">
-                      <FolderTree className="w-4 h-4" />
-                      Files
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setLeftPanelCollapsed(true)}
-                      className="h-7 w-7 p-0"
-                      data-testid="button-collapse-left"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-sidebar-border">
+                    <FolderTree className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium text-foreground">Files</span>
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <FileTree
@@ -424,20 +477,15 @@ export function Workspace({
                     />
                   </div>
                 </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Click "Chat" or "Files" to get started</p>
+                  </div>
+                </div>
               )}
             </div>
-            
-            {leftPanelCollapsed && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setLeftPanelCollapsed(false)}
-                className="absolute left-0 top-20 z-10 h-8 w-8 p-0 rounded-r-md rounded-l-none border border-l-0"
-                data-testid="button-expand-left"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            )}
             
             {/* Center Panel - Code Editor */}
             <div className="flex-1 flex flex-col min-w-0">

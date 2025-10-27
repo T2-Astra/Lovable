@@ -7,7 +7,9 @@ let _db: ReturnType<typeof drizzle> | null = null;
 function getDb() {
   if (!_db) {
     if (!process.env.DATABASE_URL) {
-      throw new Error("DATABASE_URL must be set. Ensure the database is provisioned in your Replit project.");
+      console.warn("⚠️  DATABASE_URL not set. Project history features will not work.");
+      console.warn("   The app will still work for generating and viewing projects in the current session.");
+      throw new Error("DATABASE_URL not configured. Project history is disabled.");
     }
     const sql = neon(process.env.DATABASE_URL);
     _db = drizzle(sql, { schema });
